@@ -1,0 +1,30 @@
+{
+  "name": "sf-hubspot-sync",
+  "version": "1.0.0",
+  "description": "Salesforce and HubSpot integration platform",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "echo \"Tests coming soon\" && exit 1"
+  },
+  "keywords": [
+    "salesforce",
+    "hubspot",
+    "integration",
+    "sync",
+    "crm"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

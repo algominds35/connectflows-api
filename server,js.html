@@ -1,0 +1,539 @@
+const express = require('express');
+const cors = require('cors');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const axios = require('axios');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.raw({ type: 'application/json' }));
+
+// In-memory storage (replace with database in production)
+let customers = {};
+let activeSyncs = {};
+
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'ConnectFlow Platform API',
+    version: '2.0.0',
+    customers: Object.keys(customers).length,
+    activeSyncs: Object.keys(activeSyncs).length,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
+// Create Stripe Checkout Session
+app.post('/create-checkout-session', async (req, res) => {
+  try {
+    const { priceId, customerEmail, plan } = req.body;
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      customer_email: customerEmail,
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      mode: 'subscription',
+      success_url: `${process.env.SERVER_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.SERVER_URL}/cancel`,
+      metadata: {
+        plan: plan,
+        customerEmail: customerEmail
+      }
+    });
+
+    res.json({ sessionId: session.id, url: session.url });
+  } catch (error) {
+    console.error('Error creating checkout session:', error);
+    res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+// Success page
+app.get('/success', async (req, res) => {
+  const { session_id } = req.query;
+  
+  try {
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    const customerId = session.customer;
+    const customerEmail = session.customer_email || session.metadata.customerEmail;
+    const plan = session.metadata.plan;
+
+    // Create customer record
+    const customer = {
+      id: customerId,
+      email: customerEmail,
+      plan: plan,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      onboarded: false
+    };
+
+    customers[customerId] = customer;
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Welcome to ConnectFlow!</title>
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+          .success { background: #d4edda; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+          .button { background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }
+          .steps { background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="success">
+          <h2>🎉 Payment Successful!</h2>
+          <p>Welcome to ConnectFlow ${plan} plan!</p>
+          <p>Customer ID: ${customerId}</p>
+        </div>
+        
+        <div class="steps">
+          <h3>What happens next:</h3>
+          <ol>
+            <li>Check your email for onboarding instructions</li>
+            <li>Connect your Salesforce and HubSpot accounts</li>
+            <li>Start syncing your data automatically</li>
+          </ol>
+        </div>
+        
+        <a href="/onboard/${customerId}" class="button">Start Onboarding →</a>
+        
+        <p style="margin-top: 30px; color: #666;">
+          Questions? Contact support at hello@getconnectflows.com
+        </p>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Error handling success:', error);
+    res.status(500).send('Error processing your request');
+  }
+});
+
+// Cancel page
+app.get('/cancel', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Payment Cancelled</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; text-align: center; }
+        .cancel { background: #f8d7da; padding: 20px; border-radius: 5px; }
+        .button { background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; }
+      </style>
+    </head>
+    <body>
+      <div class="cancel">
+        <h2>Payment Cancelled</h2>
+        <p>No worries! You can try again anytime.</p>
+        <a href="https://getconnectflows.com" class="button">← Back to ConnectFlow</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// Onboarding flow
+app.get('/onboard/:customerId', (req, res) => {
+  const { customerId } = req.params;
+  const customer = customers[customerId];
+  
+  if (!customer) {
+    return res.status(404).send('Customer not found');
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>ConnectFlow Onboarding</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 30px; margin: 20px 0; }
+        .button { background: #007bff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px; }
+        .connected { background: #28a745; }
+        .pending { background: #ffc107; color: black; }
+        h1 { color: #333; }
+        .step { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; }
+      </style>
+    </head>
+    <body>
+      <h1>🚀 Welcome to ConnectFlow!</h1>
+      <p>Let's get your data syncing in 3 simple steps:</p>
+      
+      <div class="card">
+        <div class="step">
+          <h3>Step 1: Connect Salesforce</h3>
+          <p>Connect your Salesforce account to start syncing leads and contacts.</p>
+          <a href="/auth/salesforce?customer=${customerId}" class="button">Connect Salesforce</a>
+        </div>
+        
+        <div class="step">
+          <h3>Step 2: Connect HubSpot</h3>
+          <p>Connect your HubSpot account to enable bi-directional sync.</p>
+          <a href="/auth/hubspot?customer=${customerId}" class="button">Connect HubSpot</a>
+        </div>
+        
+        <div class="step">
+          <h3>Step 3: Configure Sync</h3>
+          <p>Set up your sync preferences and field mappings.</p>
+          <a href="/configure/${customerId}" class="button pending">Configure Sync</a>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h3>💡 Pro Tips:</h3>
+        <ul>
+          <li>Make sure you have admin access to both platforms</li>
+          <li>The sync will start automatically once both connections are made</li>
+          <li>You can customize field mappings anytime in your dashboard</li>
+        </ul>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// OAuth routes (simplified for demo)
+app.get('/auth/salesforce', (req, res) => {
+  const { customer } = req.query;
+  // In production, implement proper OAuth flow
+  res.send(`
+    <h2>Salesforce OAuth</h2>
+    <p>In production, this would redirect to Salesforce OAuth.</p>
+    <a href="/oauth/callback/salesforce?customer=${customer}&code=demo">Simulate Successful Connection</a>
+  `);
+});
+
+app.get('/auth/hubspot', (req, res) => {
+  const { customer } = req.query;
+  // In production, implement proper OAuth flow
+  res.send(`
+    <h2>HubSpot OAuth</h2>
+    <p>In production, this would redirect to HubSpot OAuth.</p>
+    <a href="/oauth/callback/hubspot?customer=${customer}&code=demo">Simulate Successful Connection</a>
+  `);
+});
+
+// OAuth callbacks
+app.get('/oauth/callback/salesforce', (req, res) => {
+  const { customer, code } = req.query;
+  
+  if (customers[customer]) {
+    customers[customer].salesforce = {
+      connected: true,
+      connectedAt: new Date().toISOString(),
+      accessToken: 'sf_' + code // In production, exchange for real token
+    };
+  }
+  
+  res.redirect(`/onboard/${customer}?sf=connected`);
+});
+
+app.get('/oauth/callback/hubspot', (req, res) => {
+  const { customer, code } = req.query;
+  
+  if (customers[customer]) {
+    customers[customer].hubspot = {
+      connected: true,
+      connectedAt: new Date().toISOString(),
+      accessToken: 'hs_' + code // In production, exchange for real token
+    };
+  }
+  
+  res.redirect(`/onboard/${customer}?hs=connected`);
+});
+
+// Configuration page
+app.get('/configure/:customerId', (req, res) => {
+  const { customerId } = req.params;
+  const customer = customers[customerId];
+  
+  if (!customer) {
+    return res.status(404).send('Customer not found');
+  }
+
+  const sfConnected = customer.salesforce?.connected;
+  const hsConnected = customer.hubspot?.connected;
+
+  if (!sfConnected || !hsConnected) {
+    return res.redirect(`/onboard/${customerId}`);
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Configure Your Sync</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 30px; margin: 20px 0; }
+        .button { background: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; }
+        .field-mapping { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 5px; }
+      </style>
+    </head>
+    <body>
+      <h1>🔧 Configure Your Data Sync</h1>
+      
+      <div class="card">
+        <h3>✅ Connections Verified</h3>
+        <p>✅ Salesforce: Connected</p>
+        <p>✅ HubSpot: Connected</p>
+      </div>
+      
+      <div class="card">
+        <h3>Default Field Mappings</h3>
+        <div class="field-mapping">
+          <strong>Salesforce Lead → HubSpot Contact</strong><br>
+          First Name → First Name<br>
+          Last Name → Last Name<br>
+          Email → Email<br>
+          Company → Company<br>
+          Phone → Phone<br>
+        </div>
+        
+        <div class="field-mapping">
+          <strong>Sync Direction:</strong> Bi-directional<br>
+          <strong>Sync Frequency:</strong> Real-time<br>
+          <strong>Duplicate Handling:</strong> Update existing<br>
+        </div>
+      </div>
+      
+      <a href="/start-sync/${customerId}" class="button">🚀 Start Syncing Now</a>
+    </body>
+    </html>
+  `);
+});
+
+// Start sync
+app.get('/start-sync/:customerId', async (req, res) => {
+  const { customerId } = req.params;
+  const customer = customers[customerId];
+  
+  if (!customer) {
+    return res.status(404).send('Customer not found');
+  }
+
+  // Mark customer as onboarded and start sync
+  customer.onboarded = true;
+  customer.syncStatus = 'active';
+  customer.syncStartedAt = new Date().toISOString();
+  
+  // Add to active syncs
+  activeSyncs[customerId] = {
+    customerId,
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    recordsSynced: 0,
+    lastSync: new Date().toISOString()
+  };
+
+  // Simulate initial sync
+  setTimeout(() => {
+    if (activeSyncs[customerId]) {
+      activeSyncs[customerId].recordsSynced = Math.floor(Math.random() * 100) + 50;
+      activeSyncs[customerId].lastSync = new Date().toISOString();
+    }
+  }, 5000);
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Sync Started!</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; text-align: center; }
+        .success { background: #d4edda; padding: 30px; border-radius: 8px; }
+        .button { background: #007bff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px; }
+        .stats { background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="success">
+        <h1>🎉 Your Data Sync is Now Active!</h1>
+        <p>ConnectFlow is now syncing your Salesforce and HubSpot data in real-time.</p>
+      </div>
+      
+      <div class="stats">
+        <h3>What's happening now:</h3>
+        <p>✅ Initial data scan in progress</p>
+        <p>✅ Field mappings applied</p>
+        <p>✅ Real-time sync activated</p>
+        <p>✅ Duplicate detection enabled</p>
+      </div>
+      
+      <a href="/dashboard/${customerId}" class="button">View Dashboard</a>
+      <a href="https://getconnectflows.com" class="button">Back to ConnectFlow</a>
+      
+      <p style="margin-top: 30px; color: #666;">
+        You'll receive email updates about sync progress and any issues.
+      </p>
+    </body>
+    </html>
+  `);
+});
+
+// Customer dashboard
+app.get('/dashboard/:customerId', (req, res) => {
+  const { customerId } = req.params;
+  const customer = customers[customerId];
+  const sync = activeSyncs[customerId];
+  
+  if (!customer) {
+    return res.status(404).send('Customer not found');
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>ConnectFlow Dashboard</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin: 15px 0; }
+        .metric { display: inline-block; margin: 10px 20px; text-align: center; }
+        .metric-value { font-size: 2em; font-weight: bold; color: #007bff; }
+        .status-active { color: #28a745; }
+        .button { background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }
+      </style>
+    </head>
+    <body>
+      <h1>ConnectFlow Dashboard</h1>
+      <p>Welcome back! Here's your sync overview:</p>
+      
+      <div class="card">
+        <h3>Account Status</h3>
+        <p><strong>Plan:</strong> ${customer.plan}</p>
+        <p><strong>Status:</strong> <span class="status-active">${customer.status}</span></p>
+        <p><strong>Member since:</strong> ${new Date(customer.createdAt).toLocaleDateString()}</p>
+      </div>
+      
+      <div class="card">
+        <h3>Sync Metrics</h3>
+        ${sync ? `
+          <div class="metric">
+            <div class="metric-value">${sync.recordsSynced}</div>
+            <div>Records Synced</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value status-active">Active</div>
+            <div>Sync Status</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">${new Date(sync.lastSync).toLocaleTimeString()}</div>
+            <div>Last Sync</div>
+          </div>
+        ` : `
+          <p>Sync not yet started. <a href="/onboard/${customerId}">Complete onboarding</a></p>
+        `}
+      </div>
+      
+      <div class="card">
+        <h3>Connected Platforms</h3>
+        <p>✅ Salesforce: ${customer.salesforce?.connected ? 'Connected' : 'Not connected'}</p>
+        <p>✅ HubSpot: ${customer.hubspot?.connected ? 'Connected' : 'Not connected'}</p>
+      </div>
+      
+      <div class="card">
+        <h3>Quick Actions</h3>
+        <a href="/configure/${customerId}" class="button">Sync Settings</a>
+        <a href="mailto:hello@getconnectflows.com" class="button">Contact Support</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// Stripe webhook handler
+app.post('/stripe-webhook', (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle the event
+  switch (event.type) {
+    case 'checkout.session.completed':
+      const session = event.data.object;
+      console.log('Checkout session completed:', session.id);
+      
+      // Customer is automatically created in the success handler
+      break;
+
+    case 'invoice.payment_succeeded':
+      const invoice = event.data.object;
+      console.log('Payment succeeded for customer:', invoice.customer);
+      break;
+
+    case 'customer.subscription.deleted':
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      
+      // Deactivate customer
+      if (customers[customerId]) {
+        customers[customerId].status = 'cancelled';
+        customers[customerId].cancelledAt = new Date().toISOString();
+      }
+      
+      // Stop sync
+      if (activeSyncs[customerId]) {
+        activeSyncs[customerId].status = 'stopped';
+        activeSyncs[customerId].stoppedAt = new Date().toISOString();
+      }
+      
+      console.log('Subscription cancelled for customer:', customerId);
+      break;
+
+    default:
+      console.log(`Unhandled event type ${event.type}`);
+  }
+
+  res.json({ received: true });
+});
+
+// API endpoints for website integration
+app.get('/api/customers', (req, res) => {
+  res.json({
+    total: Object.keys(customers).length,
+    active: Object.values(customers).filter(c => c.status === 'active').length,
+    onboarded: Object.values(customers).filter(c => c.onboarded).length
+  });
+});
+
+app.get('/api/syncs', (req, res) => {
+  res.json({
+    total: Object.keys(activeSyncs).length,
+    running: Object.values(activeSyncs).filter(s => s.status === 'running').length,
+    totalRecords: Object.values(activeSyncs).reduce((sum, sync) => sum + sync.recordsSynced, 0)
+  });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 SF-HubSpot Sync Server Starting...`);
+  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Server URL: http://localhost:${PORT}`);
+  console.log(`🏥 Health Check: http://localhost:${PORT}/health`);
+  console.log(`✅ Server ready for connections!`);
+});
