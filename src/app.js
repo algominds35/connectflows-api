@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 require('dotenv').config();
-
+const session = require('express-session');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -11,7 +11,25 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
+app.use(session({
+  secret: 'connectflows-secret-2024',
+  resave: false,
+  saveUninitialized: false
+})); // Authentication middleware
+function requireAuth(req, res, next) {
+  if (!req.session || !req.session.user) {
+    return res.redirect('/signup?message=Please sign up to test the demo');
+  }
+  
+  const trialStart = new Date(req.session.user.trialStarted);
+  const trialEnd = new Date(trialStart.getTime() + (14 * 24 * 60 * 60 * 1000));
+  
+  if (new Date() > trialEnd) {
+    return res.redirect('/upgrade?message=Your trial has expired');
+  }
+  
+  next();
+}
 // Routes
 app.get('/', (req, res) => {
   res.json({ 
@@ -44,7 +62,291 @@ app.get('/health', (req, res) => {
     uptime: process.uptime()
   });
 });
+// Signup page
+app.get('/signup', (req, res) => {
+  const message = req.query.message || '';
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Start Your Free Trial - ConnectFlows</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          max-width: 400px; 
+          margin: 50px auto; 
+          padding: 20px;
+          background: #f8fafc;
+        }
+        .container {
+          background: white;
+          padding: 30px;
+          border-radius: 10px;
+          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .form-group { margin-bottom: 20px; }
+        input { 
+          width: 100%; 
+          padding: 12px; 
+          border: 2px solid #e2e8f0; 
+          border-radius: 8px;
+          font-size: 16px;
+          box-sizing: border-box;
+        }
+        input:focus {
+          outline: none;
+          border-color: #3b82f6;
+        }
+        button { 
+          width: 100%; 
+          padding: 12px; 
+          background: #3b82f6; 
+          color: white; 
+          border: none; 
+          border-radius: 8px;
+          font-size: 16px;
+          cursor: pointer;
+        }
+        button:hover { background: #2563eb; }
+        .message { 
+          background: #fef3c7; 
+          padding: 12px; 
+          border-radius: 8px; 
+          margin-bottom: 20px;
+          border-left: 4px solid #f59e0b;
+        }
+        .benefits {
+          background: #f0f9ff;
+          padding: 15px;
+          border-radius: 8px;
+          margin-top: 20px;
+          text-align: center;
+          font-size: 14px;
+        }
+        h2 { text-align: center; color: #1e293b; margin-bottom: 10px; }
+        .subtitle { text-align: center; color: #64748b; margin-bottom: 30px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h2>🚀 Start Your Free Trial</h2>
+        <p class="subtitle">Test Salesforce ↔ HubSpot sync with your real accounts</p>
+        
+        ${message ? `<div class="message">⚠️ ${message}</div>` : ''}
+        
+        <form action="/signup" method="post">
+          <div class="form-group">
+            <input type="email" name="email" placeholder="Your email address" required>
+          </div>
+          <div class="form-group">
+            <input type="password" name="password" placeholder="Create a password" required>
+          </div>
+          <button type="submit">Start 14-Day Free Trial</button>
+        </form>
+        
+        <div class="benefits">
+          ✅ No credit card required<br>
+          ✅ Connect your real CRM accounts<br>
+          ✅ Full access for 14 days<br>
+          ✅ Cancel anytime
+        </div>
+      </div>
+    </body>
+    </html>
+  `);
+});
 
+// Handle signup form submission
+app.post('/signup', (req, res) => {
+  const { email, password } = req.body;
+  
+  if (!email || !password) {
+    return res.redirect('/signup?message=Please fill in all fields');
+  }
+  
+  req.session.user = {
+    id: Date.now().toString(),
+    email: email,
+    trialStarted: new Date().toISOString(),
+    createdAt: new Date().toISOString()
+  };
+  
+  console.log('New user signed up:', email);
+  res.redirect('/dashboard');
+});
+
+// Dashboard route
+app.get('/dashboard', requireAuth, (req, res) => {
+  const user = req.session.user;
+  const trialStart = new Date(user.trialStarted);
+  const trialEnd = new Date(trialStart.getTime() + (14 * 24 * 60 * 60 * 1000));
+  const daysLeft = Math.ceil((trialEnd - new Date()) / (1000 * 60 * 60 * 24));
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Dashboard - ConnectFlows</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          max-width: 800px; 
+          margin: 20px auto; 
+          padding: 20px;
+          background: #f8fafc;
+        }
+        .header {
+          background: white;
+          padding: 20px;
+          border-radius: 10px;
+          margin-bottom: 20px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card { 
+          background: white; 
+          padding: 25px; 
+          margin: 15px 0; 
+          border-radius: 10px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn { 
+          padding: 12px 24px; 
+          background: #3b82f6; 
+          color: white; 
+          text-decoration: none; 
+          border-radius: 8px; 
+          display: inline-block; 
+          margin: 8px 8px 8px 0;
+          font-weight: 500;
+        }
+        .btn:hover { background: #2563eb; }
+        .btn-orange { background: #f97316; }
+        .btn-orange:hover { background: #ea580c; }
+        .trial-info { 
+          background: #fef3c7; 
+          padding: 15px; 
+          border-radius: 8px; 
+          margin: 20px 0;
+          border-left: 4px solid #f59e0b;
+        }
+        .status {
+          display: inline-block;
+          padding: 4px 12px;
+          background: #dcfce7;
+          color: #166534;
+          border-radius: 20px;
+          font-size: 14px;
+          margin-left: 10px;
+        }
+        h1 { color: #1e293b; margin: 0; }
+        h3 { color: #374151; margin-top: 0; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>🎛️ ConnectFlows Dashboard</h1>
+        <p>Welcome back, <strong>${user.email}</strong>! <span class="status">Free Trial</span></p>
+      </div>
+      
+      <div class="trial-info">
+        ⏱️ <strong>Free Trial: ${daysLeft} days remaining</strong>
+        <br><small>Connect your CRMs and test unlimited syncing during your trial.</small>
+      </div>
+      
+      <div class="card">
+        <h3>🔗 Connect Your CRM Accounts</h3>
+        <p>Connect both Salesforce and HubSpot to start syncing contacts automatically.</p>
+        
+        <a href="/auth/salesforce?customer_id=${user.id}" class="btn">
+          ⚡ Connect Salesforce
+        </a>
+        
+        <a href="/auth/hubspot?customer_id=${user.id}" class="btn btn-orange">
+          🧡 Connect HubSpot
+        </a>
+      </div>
+      
+      <div class="card">
+        <h3>💰 Keep Your Sync Running</h3>
+        <p>Upgrade to a paid plan to continue syncing after your trial ends.</p>
+        <a href="/pricing" class="btn">View Pricing Plans</a>
+        <a href="/logout" style="color: #64748b; text-decoration: none; margin-left: 20px;">Sign Out</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// Demo page
+app.get('/demo', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Live Demo - ConnectFlows</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 700px; margin: 50px auto; padding: 20px; text-align: center; }
+        .demo-section { background: #f8fafc; padding: 40px; border-radius: 15px; margin: 30px 0; }
+        .btn { padding: 15px 30px; background: #3b82f6; color: white; text-decoration: none; border-radius: 8px; font-size: 18px; }
+        .features { text-align: left; max-width: 400px; margin: 20px auto; }
+      </style>
+    </head>
+    <body>
+      <h1>🚀 See ConnectFlows in Action</h1>
+      <p>Test our live Salesforce ↔ HubSpot sync with your real CRM accounts.</p>
+      
+      <div class="demo-section">
+        <h3>Ready to test with your accounts?</h3>
+        <div class="features">
+          <p>✅ Connect your real Salesforce account</p>
+          <p>✅ Connect your real HubSpot account</p>
+          <p>✅ See contacts sync in real-time</p>
+          <p>✅ No credit card required</p>
+          <p>✅ 14-day free trial</p>
+        </div>
+        
+        <a href="/signup" class="btn">Start Free Trial</a>
+      </div>
+      
+      <p><small>Already have an account? <a href="/dashboard">Go to dashboard</a></small></p>
+    </body>
+    </html>
+  `);
+});
+
+// Logout route
+app.get('/logout', (req, res) => {
+  req.session.destroy();
+  res.redirect('/?message=You have been signed out');
+});
+
+// Upgrade page
+app.get('/upgrade', (req, res) => {
+  const message = req.query.message || 'Your trial has expired.';
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Upgrade - ConnectFlows</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; text-align: center; }
+        .upgrade-box { background: #fef2f2; padding: 30px; border-radius: 10px; border: 2px solid #fecaca; }
+        .btn { padding: 15px 30px; background: #3b82f6; color: white; text-decoration: none; border-radius: 8px; display: inline-block; margin: 10px; }
+      </style>
+    </head>
+    <body>
+      <div class="upgrade-box">
+        <h2>⏰ ${message}</h2>
+        <p>Continue syncing your Salesforce and HubSpot data with a paid plan.</p>
+        <a href="/pricing" class="btn">View Pricing Plans</a>
+        <a href="/signup" class="btn" style="background: #64748b;">Start New Trial</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
 // Auth routes
 // Salesforce OAuth initiation
 app.get('/auth/salesforce', (req, res) => {
@@ -180,7 +482,7 @@ app.get('/auth/salesforce/callback', async (req, res) => {
   }
 });
 // HubSpot OAuth initiation
-app.get('/auth/hubspot', (req, res) => {
+app.get('/auth/hubspot',requireAuth,  (req, res) => {
   const { customer_id } = req.query;
   
   // Build proper authorization URL
