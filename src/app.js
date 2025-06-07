@@ -30,6 +30,270 @@ function requireAuth(req, res, next) {
   
   next();
 }
+const { Pool } = require('pg');
+
+// Database connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
+
+// Initialize database tables
+async function initDatabase() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        trial_ends_at TIMESTAMP DEFAULT (NOW() + INTERVAL '14 days'),
+        subscription_status VARCHAR(50) DEFAULT 'trial',
+        salesforce_token TEXT,
+        hubspot_token TEXT,
+        sync_settings JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      
+      CREATE TABLE IF NOT EXISTS sync_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        status VARCHAR(50),
+        contacts_processed INTEGER DEFAULT 0,
+        conflicts INTEGER DEFAULT 0,
+        error_message TEXT,
+        sync_direction VARCHAR(50),
+        started_at TIMESTAMP DEFAULT NOW(),
+        completed_at TIMESTAMP
+      );
+      
+      CREATE TABLE IF NOT EXISTS contacts (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        salesforce_id VARCHAR(255),
+        hubspot_id VARCHAR(255),
+        email VARCHAR(255),
+        name VARCHAR(255),
+        phone VARCHAR(255),
+        company VARCHAR(255),
+        last_synced TIMESTAMP DEFAULT NOW(),
+        sync_status VARCHAR(50) DEFAULT 'synced'
+      );
+    `);
+    console.log('✅ Database tables initialized');
+  } catch (error) {
+    console.error('❌ Database initialization failed:', error);
+  }
+}
+
+// Initialize database on startup
+initDatabase();
+
+// User data functions
+async function createUser(email, passwordHash) {
+  const result = await pool.query(
+    'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING *',
+    [email, passwordHash]
+  );
+  return result.rows[0];
+}
+
+async function getUserByEmail(email) {
+  const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+  return result.rows[0];
+}
+
+async function getUserById(id) {
+  const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+  return result.rows[0];
+}
+
+async function updateUserTokens(userId, salesforceToken, hubspotToken) {
+  await pool.query(
+    'UPDATE users SET salesforce_token = $1, hubspot_token = $2 WHERE id = $3',
+    [salesforceToken, hubspotToken, userId]
+  );
+}
+
+async function getUserSyncHistory(userId) {
+  const result = await pool.query(
+    'SELECT * FROM sync_logs WHERE user_id = $1 ORDER BY started_at DESC LIMIT 10',
+    [userId]
+  );
+  return result.rows;
+}
+
+async function createSyncLog(userId, status, contactsProcessed, conflicts, errorMessage = null) {
+  const result = await pool.query(
+    'INSERT INTO sync_logs (user_id, status, contacts_processed, conflicts, error_message) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    [userId, status, contactsProcessed, conflicts, errorMessage]
+  );
+  return result.rows[0];
+}
+
+async function getUserStats(userId) {
+  const syncHistory = await getUserSyncHistory(userId);
+  const contactsResult = await pool.query(
+    'SELECT COUNT(*) as total FROM contacts WHERE user_id = $1',
+    [userId]
+  );
+  
+  const lastSync = syncHistory.length > 0 ? syncHistory[0] : null;
+  const totalContacts = parseInt(contactsResult.rows[0].total);
+  
+  return {
+    totalContacts,
+    lastSync: lastSync?.started_at || null,
+    syncStatus: lastSync?.status || 'never',
+    syncHistory: syncHistory.map(log => ({
+      id: log.id,
+      status: log.status,
+      total: log.contacts_processed,
+      conflicts: log.conflicts,
+      error: log.error_message,
+      timestamp: log.started_at
+    }))
+  };
+}
+
+// Salesforce API functions
+async function fetchSalesforceContacts(accessToken) {
+  const response = await fetch('https://login.salesforce.com/services/data/v57.0/query/?q=SELECT Id,FirstName,LastName,Email,Phone,Account.Name FROM Contact LIMIT 100', {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json'
+    }
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Salesforce API error: ${response.status}`);
+  }
+  
+  const data = await response.json();
+  return data.records.map(contact => ({
+    id: contact.Id,
+    name: `${contact.FirstName || ''} ${contact.LastName || ''}`.trim(),
+    email: contact.Email,
+    phone: contact.Phone,
+    company: contact.Account?.Name || '',
+    source: 'salesforce'
+  }));
+}
+
+// HubSpot API functions
+async function fetchHubSpotContacts(accessToken) {
+  const response = await fetch('https://api.hubapi.com/crm/v3/objects/contacts?properties=firstname,lastname,email,phone,company&limit=100', {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json'
+    }
+  });
+  
+  if (!response.ok) {
+    throw new Error(`HubSpot API error: ${response.status}`);
+  }
+  
+  const data = await response.json();
+  return data.results.map(contact => ({
+    id: contact.id,
+    name: `${contact.properties.firstname || ''} ${contact.properties.lastname || ''}`.trim(),
+    email: contact.properties.email,
+    phone: contact.properties.phone,
+    company: contact.properties.company || '',
+    source: 'hubspot'
+  }));
+}
+
+// Sync engine
+async function performSync(userId) {
+  const user = await getUserById(userId);
+  if (!user || !user.salesforce_token || !user.hubspot_token) {
+    throw new Error('User not found or CRM accounts not connected');
+  }
+  
+  try {
+    // Create sync log
+    const syncLog = await createSyncLog(userId, 'running', 0, 0);
+    
+    // Fetch contacts from both systems
+    const [salesforceContacts, hubspotContacts] = await Promise.all([
+      fetchSalesforceContacts(user.salesforce_token),
+      fetchHubSpotContacts(user.hubspot_token)
+    ]);
+    
+    // Compare and identify conflicts
+    const conflicts = [];
+    const processedContacts = [];
+    
+    for (const sfContact of salesforceContacts) {
+      const hubspotMatch = hubspotContacts.find(hc => hc.email === sfContact.email);
+      
+      if (hubspotMatch) {
+        // Check for conflicts
+        const hasConflict = 
+          sfContact.name !== hubspotMatch.name ||
+          sfContact.phone !== hubspotMatch.phone ||
+          sfContact.company !== hubspotMatch.company;
+        
+        if (hasConflict) {
+          conflicts.push({
+            email: sfContact.email,
+            salesforce: sfContact,
+            hubspot: hubspotMatch
+          });
+        }
+        
+        processedContacts.push({
+          user_id: userId,
+          salesforce_id: sfContact.id,
+          hubspot_id: hubspotMatch.id,
+          email: sfContact.email,
+          name: sfContact.name,
+          phone: sfContact.phone,
+          company: sfContact.company
+        });
+      } else {
+        // Contact only in Salesforce
+        processedContacts.push({
+          user_id: userId,
+          salesforce_id: sfContact.id,
+          email: sfContact.email,
+          name: sfContact.name,
+          phone: sfContact.phone,
+          company: sfContact.company
+        });
+      }
+    }
+    
+    // Store contacts
+    for (const contact of processedContacts) {
+      await pool.query(
+        `INSERT INTO contacts (user_id, salesforce_id, hubspot_id, email, name, phone, company) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) 
+         ON CONFLICT (user_id, email) DO UPDATE SET 
+         name = EXCLUDED.name, phone = EXCLUDED.phone, company = EXCLUDED.company, last_synced = NOW()`,
+        [contact.user_id, contact.salesforce_id, contact.hubspot_id, contact.email, contact.name, contact.phone, contact.company]
+      );
+    }
+    
+    // Update sync log
+    await pool.query(
+      'UPDATE sync_logs SET status = $1, contacts_processed = $2, conflicts = $3, completed_at = NOW() WHERE id = $4',
+      ['success', processedContacts.length, conflicts.length, syncLog.id]
+    );
+    
+    return {
+      success: true,
+      contactsProcessed: processedContacts.length,
+      conflicts: conflicts.length,
+      conflictDetails: conflicts
+    };
+    
+  } catch (error) {
+    // Log error
+    await createSyncLog(userId, 'error', 0, 0, error.message);
+    throw error;
+  }
+}
 // Routes
 app.get('/', (req, res) => {
   res.json({ 
