@@ -179,23 +179,139 @@ app.get('/auth/salesforce/callback', async (req, res) => {
     });
   }
 });
+// HubSpot OAuth initiation
 app.get('/auth/hubspot', (req, res) => {
-  res.json({ 
-    message: 'HubSpot OAuth endpoint ready!',
-    redirect_uri: process.env.HUBSPOT_REDIRECT_URI,
-    client_configured: !!process.env.HUBSPOT_CLIENT_ID
-  });
+  const { customer_id } = req.query;
+  
+  // Build proper authorization URL
+  const authUrl = `https://app.hubspot.com/oauth/authorize?` +
+    `client_id=${process.env.HUBSPOT_CLIENT_ID}&` +
+    `redirect_uri=${encodeURIComponent(process.env.HUBSPOT_REDIRECT_URI)}&` +
+    `scope=contacts crm.objects.contacts.read crm.objects.contacts.write&` +
+    `state=${customer_id || 'test'}&` +
+    `response_type=code`;
+  
+  console.log('🔗 Redirecting to HubSpot:', authUrl);
+  res.redirect(authUrl);
 });
 
-app.get('/auth/hubspot/callback', (req, res) => {
-  const { code, error } = req.query;
-  res.json({ 
-    message: 'HubSpot OAuth callback',
-    received_code: !!code,
-    error: error || null
+// HubSpot OAuth callback - COMPLETE WORKING VERSION
+app.get('/auth/hubspot/callback', async (req, res) => {
+  const { code, error, state, error_description } = req.query;
+  const customer_id = state;
+  
+  console.log('📥 HubSpot callback received:', { 
+    hasCode: !!code, 
+    error, 
+    error_description,
+    customer_id 
   });
+  
+  if (error) {
+    return res.json({ 
+      success: false,
+      error: error,
+      description: error_description,
+      message: "HubSpot authorization failed",
+      customer_id: customer_id
+    });
+  }
+  
+  if (!code) {
+    return res.json({ 
+      success: false,
+      error: "missing_code",
+      message: "No authorization code received from HubSpot",
+      customer_id: customer_id
+    });
+  }
+  
+  try {
+    console.log('🔄 Exchanging code for access token...');
+    
+    const tokenRequestData = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: process.env.HUBSPOT_CLIENT_ID,
+      client_secret: process.env.HUBSPOT_CLIENT_SECRET,
+      redirect_uri: process.env.HUBSPOT_REDIRECT_URI,
+      code: code
+    });
+    
+    const tokenResponse = await fetch('https://api.hubapi.com/oauth/v1/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: tokenRequestData
+    });
+    
+    const tokenData = await tokenResponse.json();
+    
+    console.log('📥 HubSpot token response:', {
+      success: tokenResponse.ok,
+      status: tokenResponse.status,
+      hasAccessToken: !!tokenData.access_token,
+      error: tokenData.error
+    });
+    
+    if (!tokenResponse.ok) {
+      throw new Error(`Token exchange failed: ${tokenData.error_description || tokenData.error}`);
+    }
+    
+    const { access_token, refresh_token, hub_id } = tokenData;
+    
+    // Test the access token by getting account info
+    console.log('👤 Testing HubSpot access token...');
+    const accountResponse = await fetch('https://api.hubapi.com/account-info/v3/details', {
+      headers: {
+        'Authorization': `Bearer ${access_token}`,
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (!accountResponse.ok) {
+      throw new Error('Failed to fetch account info with access token');
+    }
+    
+    const accountInfo = await accountResponse.json();
+    
+    console.log('✅ HubSpot OAuth successful for hub:', hub_id);
+    
+    // Success response
+    res.json({
+      success: true,
+      message: "🎉 HubSpot connected successfully!",
+      account_info: {
+        hub_id: hub_id,
+        account_type: accountInfo.accountType || 'Unknown',
+        portal_id: accountInfo.portalId || hub_id,
+        time_zone: accountInfo.timeZone || 'Unknown'
+      },
+      hubspot_data: {
+        hub_id: hub_id,
+        has_access_token: !!access_token,
+        has_refresh_token: !!refresh_token
+      },
+      customer_id: customer_id,
+      next_steps: [
+        "✅ HubSpot account connected",
+        "🔄 Ready to sync contacts with Salesforce", 
+        "🚀 Your integration is complete!"
+      ]
+    });
+    
+  } catch (error) {
+    console.error('❌ HubSpot OAuth error:', error.message);
+    
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: "Failed to complete HubSpot authorization",
+      customer_id: customer_id
+    });
+  }
 });
-
 // API routes
 app.get('/api/sync', (req, res) => {
   res.json({ 
