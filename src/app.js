@@ -712,27 +712,7 @@ app.get('/auth/salesforce/callback', async (req, res) => {
     console.log('✅ Salesforce OAuth successful for:', userInfo.email);
     
     // Success response
-    res.json({
-      success: true,
-      message: "🎉 Salesforce connected successfully!",
-      user_info: {
-        email: userInfo.email,
-        name: userInfo.name,
-        organization_id: userInfo.organization_id,
-        user_id: userInfo.user_id
-      },
-      salesforce_data: {
-        instance_url: instance_url,
-        has_access_token: !!access_token,
-        has_refresh_token: !!refresh_token
-      },
-      customer_id: customer_id,
-      next_steps: [
-        "✅ Salesforce account connected",
-        "🔄 Ready to sync contacts", 
-        "🚀 Connect HubSpot to complete setup"
-      ]
-    });
+    res.redirect('/dashboard?salesforce=connected&message=' + encodeURIComponent('Salesforce connected successfully!'));
     
   } catch (error) {
     console.error('❌ Salesforce OAuth error:', error.message);
