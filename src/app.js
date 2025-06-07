@@ -187,7 +187,7 @@ app.get('/auth/hubspot', (req, res) => {
   const authUrl = `https://app.hubspot.com/oauth/authorize?` +
     `client_id=${process.env.HUBSPOT_CLIENT_ID}&` +
     `redirect_uri=${encodeURIComponent(process.env.HUBSPOT_REDIRECT_URI)}&` +
-    `scope=crm.objects.contacts.read crm.objects.contacts.write&` +
+    `scope=crm.objects.contacts.read crm.objects.contacts.write crm.schemas.contacts.read crm.schemas.contacts.write oauth&` +
     `state=${customer_id || 'test'}&` +
     `response_type=code`;
   
