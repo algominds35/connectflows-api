@@ -535,7 +535,7 @@ app.get('/dashboard', requireAuth, (req, res) => {
         </a
       
         
-        <a href="/auth/salesforce" class="btn">
+        <a href="/auth/hubspot" class="btn">
           🧡 Connect HubSpot
         </a>
       </div>
@@ -812,7 +812,59 @@ app.get('/auth/salesforce/callback', async (req, res) => {
     });
   }
 });
-// HubSpot OAuth initiation
+app.get('/auth/hubspot', requireAuth, (req, res) => {
+  const authUrl = `https://app.hubspot.com/oauth/authorize?` +
+    `client_id=${process.env.HUBSPOT_CLIENT_ID}&` +
+    `scope=contacts deals companies&` +
+    `redirect_uri=${encodeURIComponent('https://getconnectflows.com/auth/hubspot/callback')}`;
+  
+  console.log('🔄 Redirecting to HubSpot OAuth');
+  res.redirect(authUrl);
+});
+
+// HubSpot OAuth callback
+app.get('/auth/hubspot/callback', requireAuth, async (req, res) => {
+  const { code, error } = req.query;
+  
+  if (error) {
+    console.error('❌ HubSpot OAuth error:', error);
+    return res.redirect('/dashboard?error=HubSpot authorization failed');
+  }
+  
+  if (!code) {
+    return res.redirect('/dashboard?error=No authorization code received');
+  }
+  
+  try {
+    const tokenResponse = await fetch('https://api.hubapi.com/oauth/v1/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: process.env.HUBSPOT_CLIENT_ID,
+        client_secret: process.env.HUBSPOT_CLIENT_SECRET,
+        redirect_uri: 'https://getconnectflows.com/auth/hubspot/callback',
+        code: code
+      })
+    });
+    
+    const tokenData = await tokenResponse.json();
+    
+    if (!tokenResponse.ok) {
+      throw new Error(tokenData.message || 'Token exchange failed');
+    }
+    
+    req.session.hubspotToken = tokenData.access_token;
+    req.session.hubspotConnected = true;
+    
+    console.log('✅ HubSpot connected successfully');
+    res.redirect('/dashboard?message=' + encodeURIComponent('HubSpot connected successfully!'));
+    
+  } catch (error) {
+    console.error('❌ HubSpot callback error:', error);
+    res.redirect('/dashboard?error=HubSpot connection failed');
+  }
+});
 app.get('/auth/hubspot',requireAuth,  (req, res) => {
   const { customer_id } = req.query;
   
