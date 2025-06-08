@@ -530,7 +530,7 @@ app.get('/dashboard', requireAuth, (req, res) => {
         <h3>🔗 Connect Your CRM Accounts</h3>
         <p>Connect both Salesforce and HubSpot to start syncing contacts automatically.</p>
         
-        <a href="/auth/salesforce?customer_id=${user.id}" class="btn">
+        <a href="/auth/salesforce" class="btn">
           ⚡ Connect Salesforce
         </a
       
@@ -815,7 +815,7 @@ app.get('/auth/salesforce/callback', async (req, res) => {
 app.get('/auth/hubspot', requireAuth, (req, res) => {
   const authUrl = `https://app.hubspot.com/oauth/authorize?` +
     `client_id=${process.env.HUBSPOT_CLIENT_ID}&` +
-    `scope=contacts deals companies&` +
+    `scope=crm.objects.contacts.read crm.objects.contacts.write crm.schemas.contacts.read crm.schemas.contacts.write oauth&` +
     `redirect_uri=${encodeURIComponent('https://rapid-mailbox-production.up.railway.app/auth/hubspot/callback')}`;
   
   console.log('🔄 Redirecting to HubSpot OAuth');
