@@ -823,7 +823,7 @@ app.get('/auth/salesforce/callback', async (req, res) => {
 app.get('/auth/hubspot', requireAuth, (req, res) => {
   const authUrl = `https://app.hubspot.com/oauth/authorize?` +
     `client_id=${process.env.HUBSPOT_CLIENT_ID}&` +
-`scope=oauth&` +
+`scope=crm.objects.contacts.read crm.objects.contacts.write crm.schemas.contacts.read crm.schemas.contacts.write oauth&` +
     `redirect_uri=${encodeURIComponent('https://rapid-mailbox-production.up.railway.app/auth/hubspot/callback')}`;
   
   console.log('🔄 Redirecting to HubSpot OAuth');
