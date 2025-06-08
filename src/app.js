@@ -535,7 +535,7 @@ app.get('/dashboard', requireAuth, (req, res) => {
         </a
       
         
-        <a href="/auth/hubspot?customer_id=${user.id}" class="btn btn-orange">
+        <a href="/auth/salesforce" class="btn">
           🧡 Connect HubSpot
         </a>
       </div>
