@@ -537,7 +537,31 @@ app.get('/dashboard', requireAuth, (req, res) => {
         <p>Upgrade to a paid plan to continue syncing after your trial ends.</p>
         <a href="/pricing" class="btn">View Pricing Plans</a>
         <a href="/logout" style="color: #64748b; text-decoration: none; margin-left: 20px;">Sign Out</a>
+      </div> 
       </div>
+      
+      <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const salesforceConnected = urlParams.get('salesforce') === 'connected';
+        const message = urlParams.get('message');
+
+        if (message) {
+          const alertDiv = document.createElement('div');
+          alertDiv.style.cssText = 'background: #d1fae5; border: 1px solid #10b981; color: #065f46; padding: 15px; border-radius: 8px; margin-bottom: 20px;';
+          alertDiv.innerHTML = '✅ ' + decodeURIComponent(message);
+          document.body.insertBefore(alertDiv, document.body.firstChild);
+        }
+
+        if (salesforceConnected) {
+          const sfButton = document.querySelector('a[href*="salesforce"]');
+          if (sfButton) {
+            sfButton.textContent = '✅ Salesforce Connected';
+            sfButton.style.background = '#10b981';
+          }
+        }
+      </script>
+    </body>
+    </html>
     </body>
     </html>
   `);
@@ -888,7 +912,7 @@ app.get('/api/sync/contacts', (req, res) => {
 
 app.post('/api/sync/contacts', requireAuth, async (req, res) => {
   try {
-    const userId = req.session.userId;
+    const userId = req.session.user?.id;
     console.log('🚀 Starting REAL contact sync for user:', userId);
     
     // Get user's OAuth tokens from session
