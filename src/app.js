@@ -1053,7 +1053,7 @@ app.post('/api/sync/contacts', requireAuth, async (req, res) => {
       try {
         console.log('📊 Fetching real Salesforce contacts...');
         
-        const salesforceResponse = await fetch(`${salesforceInstanceUrl}/services/data/v58.0/query/?q=SELECT Id,Name,Email,Phone,Company FROM Contact LIMIT 100`, {
+        const salesforceResponse = await fetch(`${salesforceInstanceUrl}/services/data/v58.0/query/?q=SELECT Id,FirstName,LastName,Email,Phone,Account.Name FROM Contact LIMIT 100`, {
           headers: {
             'Authorization': `Bearer ${salesforceToken}`,
             'Accept': 'application/json'
@@ -1069,10 +1069,10 @@ app.post('/api/sync/contacts', requireAuth, async (req, res) => {
             status: "connected",
             contacts_found: salesforceContacts.length,
             sample_contacts: salesforceContacts.slice(0, 3).map(c => ({
-              name: c.Name,
+              name: `${c.FirstName || ''} ${c.LastName || ''}`.trim(),
               email: c.Email,
               phone: c.Phone,
-              company: c.Company
+             company: c.Account?.Name || 'No Company'
             }))
           };
         }
