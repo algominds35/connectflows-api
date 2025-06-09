@@ -594,7 +594,29 @@ app.get('/dashboard', requireAuth, (req, res) => {
                     // Show results
                     const resultDiv = document.createElement('div');
                     resultDiv.style.cssText = 'background: #d1fae5; padding: 20px; border-radius: 8px; margin-top: 20px; color: #065f46; border: 1px solid #10b981;';
-                    resultDiv.innerHTML = '<h4>✅ Real Sync Results!</h4><p>📊 Salesforce Contacts: ' + (data.real_results?.salesforce?.contacts_found || 0) + '</p><p>💰 Monthly Savings: ' + (data.real_results?.business_impact?.monthly_cost_savings || '$2,000+') + '</p>';
+                    // Build result HTML with sample contacts
+let resultHTML = '<h4>✅ Real Sync Results!</h4>';
+resultHTML += '<p>📊 Salesforce Contacts: ' + (data.real_results?.salesforce?.contacts_found || 0) + '</p>';
+
+// Add sample contacts if they exist
+if (data.real_results?.salesforce?.sample_contacts && data.real_results.salesforce.sample_contacts.length > 0) {
+  resultHTML += '<p>👥 Sample contacts:</p><ul style="margin: 10px 0; padding-left: 20px;">';
+  data.real_results.salesforce.sample_contacts.forEach(contact => {
+    resultHTML += '<li style="margin: 5px 0;"><strong>' + (contact.name || 'No Name') + '</strong>';
+    if (contact.company && contact.company !== 'No Company') {
+      resultHTML += ' (' + contact.company + ')';
+    }
+    if (contact.email) {
+      resultHTML += ' - ' + contact.email;
+    }
+    resultHTML += '</li>';
+  });
+  resultHTML += '</ul>';
+}
+
+resultHTML += '<p>💰 Monthly Savings: ' + (data.real_results?.business_impact?.monthly_cost_savings || '$397') + '</p>';
+
+resultDiv.innerHTML = resultHTML;
                     
                     sfButton.parentNode.appendChild(resultDiv);
                   } else {
@@ -936,12 +958,12 @@ app.get('/auth/hubspot/callback', async (req, res) => {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
       },
-      body: tokenRequestData
+      body: tokenRequestData  
     });
-    
-    const tokenData = await tokenResponse.json();
-    
-    console.log('📥 HubSpot token response:', {
+
+      const tokenData = await tokenResponse.json();
+
+      console.log('📥 HubSpot token response:', {
       success: tokenResponse.ok,
       status: tokenResponse.status,
       hasAccessToken: !!tokenData.access_token,
