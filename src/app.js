@@ -687,7 +687,15 @@ app.get('/pricing', (req, res) => {
 
         <script>
             async function subscribe(plan) {
+                // Get the button that was clicked
+                const button = event.target;
+                const originalText = button.textContent;
+                
                 try {
+                    // Show loading state
+                    button.textContent = '🔄 Creating checkout...';
+                    button.disabled = true;
+                    
                     const response = await fetch('/create-checkout', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -695,14 +703,22 @@ app.get('/pricing', (req, res) => {
                     });
                     
                     const data = await response.json();
+                    
                     if (data.checkoutUrl) {
+                        // Success - redirect to Lemon Squeezy
+                        button.textContent = '✅ Redirecting...';
                         window.location.href = data.checkoutUrl;
                     } else {
+                        // Show error message
+                        button.textContent = originalText;
+                        button.disabled = false;
                         alert('Error creating checkout. Please try again.');
                     }
                 } catch (error) {
-                    console.error('Error:', error);
-                    alert('Error creating checkout. Please try again.');
+                    console.error('Checkout error:', error);
+                    button.textContent = originalText;
+                    button.disabled = false;
+                    alert('Network error. Please check your connection and try again.');
                 }
             }
         </script>
