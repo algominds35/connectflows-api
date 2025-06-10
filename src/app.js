@@ -5,6 +5,7 @@ require('dotenv').config();
 const session = require('express-session');
 const app = express();
 const PORT = process.env.PORT || 3000;
+const path = require('path');
 
 // Middleware
 app.use(helmet({
@@ -886,48 +887,9 @@ resultDiv.innerHTML = resultHTML;
 });
 
 // Demo page
+// Demo page  
 app.get('/demo', (req, res) => {
-  // Auto-login demo users
-  req.session.user = { 
-    id: 'demo-user', 
-    email: 'demo@connectflows.com',
-    name: 'Demo User',
-    trialStarted: new Date().toISOString()
-  };
-  req.session.isAuthenticated = true;
-  
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Live Demo - ConnectFlows</title>
-      <style>
-        body { font-family: Arial, sans-serif; max-width: 700px; margin: 50px auto; padding: 20px; text-align: center; }
-        .demo-section { background: #f8fafc; padding: 40px; border-radius: 15px; margin: 30px 0; }
-        .btn { padding: 15px 30px; background: #3b82f6; color: white; text-decoration: none; border-radius: 8px; font-size: 18px; margin: 10px; }
-        .features { text-align: left; max-width: 400px; margin: 20px auto; }
-      </style>
-    </head>
-    <body>
-      <h1>🚀 ConnectFlows Live Demo</h1>
-      <p>You're now logged in as a demo user! Test our OAuth connections.</p>
-      
-      <div class="demo-section">
-        <h3>Test Real OAuth Connections</h3>
-        <div class="features">
-          <p>✅ Connect your real Salesforce account</p>
-          <p>✅ Connect your real HubSpot account</p>
-          <p>✅ See contacts sync in real-time</p>
-        </div>
-        
-        <a href="/auth/salesforce" class="btn">⚡ Test Salesforce OAuth</a>
-        <a href="/auth/hubspot" class="btn">🧡 Test HubSpot OAuth</a>
-        <br>
-        <a href="/dashboard" class="btn" style="background: #10b981;">Go to Dashboard</a>
-      </div>
-    </body>
-    </html>
-  `);
+  res.sendFile(path.join(__dirname, 'src', 'demo.html'));
 });
 
 // Logout route
