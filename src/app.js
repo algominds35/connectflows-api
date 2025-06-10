@@ -57,10 +57,12 @@ async function initDatabase() {
         password_hash VARCHAR(255) NOT NULL,
         trial_ends_at TIMESTAMP DEFAULT (NOW() + INTERVAL '14 days'),
         subscription_status VARCHAR(50) DEFAULT 'trial',
+        plan_type VARCHAR(50) DEFAULT 'starter',
         salesforce_token TEXT,
         hubspot_token TEXT,
         sync_settings JSONB DEFAULT '{}',
-        created_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
       );
       
       CREATE TABLE IF NOT EXISTS sync_logs (
@@ -71,6 +73,7 @@ async function initDatabase() {
         conflicts INTEGER DEFAULT 0,
         error_message TEXT,
         sync_direction VARCHAR(50),
+        sync_type VARCHAR(50) DEFAULT 'demo',
         started_at TIMESTAMP DEFAULT NOW(),
         completed_at TIMESTAMP
       );
@@ -1490,7 +1493,13 @@ app.get('/api/sync/contacts', (req, res) => {
 app.post('/api/sync/contacts', requireAuth, async (req, res) => {
   try {
     const user = req.session.user;
-    console.log(`🚀 REAL: Enterprise sync request from paying customer: ${user.email}`);
+    console.log(`🚀 Sync request from user: ${user.email}`);
+
+    // Check if user is paid or on trial
+    const isPaidUser = user.subscription_status === 'paid' || user.subscription_status === 'active';
+    const isTrialExpired = new Date() > new Date(user.trial_ends_at);
+    
+    console.log(`💰 User status: ${isPaidUser ? 'PAID' : 'TRIAL'}, Trial expired: ${isTrialExpired}`);
 
     // Validate customer has required connections
     if (!req.session.salesforceToken) {
@@ -1501,80 +1510,189 @@ app.post('/api/sync/contacts', requireAuth, async (req, res) => {
       });
     }
 
-    // Initialize REAL enterprise sync engine
-    const syncEngine = new RealSyncEngine(
-      user.id,
-      req.session.salesforceToken,
-      req.session.salesforceInstanceUrl,
-      req.session.hubspotToken || null
-    );
-    
-    // Perform REAL enterprise bidirectional sync
-    const syncResults = await syncEngine.performEnterpriseBidirectionalSync();
-   
-
-    // Calculate real business value for paying customer
-    const totalContacts = syncResults.salesforce_contacts_found;
-    const timesSavedHours = Math.floor(totalContacts * 0.05); // 3 minutes per contact / 60
-    const monthlySavings = Math.max(197, totalContacts * 3); // Minimum $197 value
-    const annualSavings = monthlySavings * 12;
-
-    // Return REAL enterprise results
-    res.json({
-      success: true,
-      message: syncResults.message,
-      sync_type: 'enterprise_bidirectional',
-      real_results: {
-        salesforce: {
-          status: 'connected',
-          contacts_found: syncResults.salesforce_contacts_found,
-          sample_contacts: syncResults.real_sample_contacts // REAL CUSTOMER DATA
-        },
-        hubspot: {
-          connected: !!req.session.hubspotToken,
-          sync_status: syncResults.hubspot_sync_attempted ? 'completed' : 'ready_to_connect',
-          contacts_created: syncResults.hubspot_created,
-          contacts_updated: syncResults.hubspot_updated,
-          total_synced: syncResults.hubspot_created + syncResults.hubspot_updated
-        },
-        business_impact: {
-          total_records_processed: totalContacts,
-          time_saved_hours: timesSavedHours,
-          monthly_cost_savings: `$${monthlySavings}`,
-          annual_savings: `$${annualSavings}`,
-          roi_vs_connectflows_cost: `${Math.round((monthlySavings / 197) * 100)}%`,
-          sync_efficiency: syncResults.hubspot_sync_attempted ? 'Real-time bidirectional' : 'Salesforce analysis complete'
-        },
-        enterprise_features: {
-          data_source: 'Real customer CRM data',
-          sync_method: 'API-based bidirectional',
-          security: 'Enterprise OAuth',
-          support: '24/7 monitoring'
-        }
-      },
-      timestamp: new Date().toISOString() 
+    // 🎯 DECISION: Use REAL sync for paid users, DEMO sync for trial users
+    if (isPaidUser && !isTrialExpired) {
+      // 💰 PAID USER - Use REAL enterprise sync engine
+      console.log(`🚀 REAL: Enterprise sync for PAID customer: ${user.email}`);
       
-    });
+      const syncEngine = new RealSyncEngine(
+        user.id,
+        req.session.salesforceToken,
+        req.session.salesforceInstanceUrl,
+        req.session.hubspotToken || null
+      );
+      
+      const syncResults = await syncEngine.performEnterpriseBidirectionalSync();
+      
+      // Calculate real business value for paying customer
+      const totalContacts = syncResults.salesforce_contacts_found;
+      const timesSavedHours = Math.floor(totalContacts * 0.05);
+      const monthlySavings = Math.max(197, totalContacts * 3);
+      const annualSavings = monthlySavings * 12;
+
+      return res.json({
+        success: true,
+        message: syncResults.message,
+        sync_type: 'enterprise_bidirectional',
+        user_status: 'paid',
+        real_results: {
+          salesforce: {
+            status: 'connected',
+            contacts_found: syncResults.salesforce_contacts_found,
+            sample_contacts: syncResults.real_sample_contacts
+          },
+          hubspot: {
+            connected: !!req.session.hubspotToken,
+            sync_status: syncResults.hubspot_sync_attempted ? 'completed' : 'ready_to_connect',
+            contacts_created: syncResults.hubspot_created,
+            contacts_updated: syncResults.hubspot_updated,
+            total_synced: syncResults.hubspot_created + syncResults.hubspot_updated
+          },
+          business_impact: {
+            total_records_processed: totalContacts,
+            time_saved_hours: timesSavedHours,
+            monthly_cost_savings: `$${monthlySavings}`,
+            annual_savings: `$${annualSavings}`,
+            roi_vs_connectflows_cost: `${Math.round((monthlySavings / 197) * 100)}%`,
+            sync_efficiency: syncResults.hubspot_sync_attempted ? 'Real-time bidirectional' : 'Salesforce analysis complete'
+          },
+          enterprise_features: {
+            data_source: 'Real customer CRM data',
+            sync_method: 'API-based bidirectional',
+            security: 'Enterprise OAuth',
+            support: '24/7 monitoring'
+          }
+        },
+        timestamp: new Date().toISOString()
+      });
+      
+    } else {
+      // 🎭 TRIAL USER - Use DEMO sync engine (limited functionality)
+      console.log(`🎭 DEMO: Trial sync for user: ${user.email}`);
+      
+      // Demo sync with limited data and functionality
+      const demoResults = await performDemoSync(user.id, req.session.salesforceToken);
+      
+      return res.json({
+        success: true,
+        message: 'Demo sync completed successfully! Upgrade to paid plan for full bidirectional sync.',
+        sync_type: 'demo_limited',
+        user_status: 'trial',
+        demo_results: {
+          salesforce: {
+            status: 'connected',
+            contacts_found: demoResults.contacts_found,
+            sample_contacts: demoResults.sample_contacts,
+            note: 'Demo mode - limited to 5 contacts'
+          },
+          hubspot: {
+            connected: !!req.session.hubspotToken,
+            sync_status: 'demo_mode',
+            note: 'Upgrade to paid plan for HubSpot sync'
+          },
+          upgrade_prompt: {
+            message: 'Unlock full bidirectional sync with paid plan',
+            benefits: [
+              'Unlimited contacts',
+              'Real-time bidirectional sync',
+              'HubSpot integration',
+              'Advanced conflict resolution'
+            ],
+            pricing: '$197/month',
+            upgrade_url: '/pricing'
+          }
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
 
   } catch (error) {
-    console.error('❌ REAL: Enterprise sync failed:', error);
+    console.error('❌ Sync failed:', error);
     res.status(500).json({
       success: false,
       error: error.message,
-      message: 'Enterprise sync failed - our team has been notified'
+      message: 'Sync failed - please try again'
     });
   }
 });
 
-app.get('/api/sync/trigger', (req, res) => {
-  res.json({ 
-    message: '🎯 Manual sync trigger available',
-    instructions: 'POST to /api/sync/contacts to start sync',
-    endpoint: '/api/sync/contacts',
-    method: 'POST',
-    customer_benefit: "One-click sync vs 3 hours manual work",
-    revenue_opportunity: "$397/month per customer"
-  });
+// Demo sync function for trial users
+async function performDemoSync(userId, salesforceToken) {
+  try {
+    console.log('🎭 DEMO: Starting demo sync for trial user');
+    
+    // Get limited Salesforce contacts for demo
+    const salesforceContacts = await fetchSalesforceContacts(salesforceToken);
+    const demoContacts = salesforceContacts.slice(0, 5); // Limit to 5 contacts
+    
+    // Create demo sample contacts
+    const sampleContacts = demoContacts.map(contact => ({
+      name: contact.name || 'Demo Contact',
+      email: contact.email || 'demo@example.com',
+      company: contact.company || 'Demo Company',
+      phone: contact.phone || '',
+      status: 'demo_mode'
+    }));
+    
+    console.log(`🎭 DEMO: Processed ${demoContacts.length} contacts for trial user`);
+    
+    return {
+      contacts_found: salesforceContacts.length,
+      sample_contacts: sampleContacts,
+      message: 'Demo sync completed - upgrade for full functionality'
+    };
+    
+  } catch (error) {
+    console.error('❌ Demo sync failed:', error);
+    throw error;
+  }
+}
+
+// Update user subscription status after payment
+async function updateUserSubscriptionStatus(userId, subscriptionStatus, planType = null) {
+  try {
+    const updateQuery = planType 
+      ? 'UPDATE users SET subscription_status = $1, plan_type = $2, updated_at = NOW() WHERE id = $3'
+      : 'UPDATE users SET subscription_status = $1, updated_at = NOW() WHERE id = $3';
+    
+    const params = planType 
+      ? [subscriptionStatus, planType, userId]
+      : [subscriptionStatus, userId];
+    
+    await pool.query(updateQuery, params);
+    console.log(`✅ Updated user ${userId} subscription to: ${subscriptionStatus}`);
+  } catch (error) {
+    console.error('❌ Failed to update user subscription:', error);
+    throw error;
+  }
+}
+
+// Lemon Squeezy webhook handler for payment confirmations
+app.post('/webhooks/lemonsqueezy', async (req, res) => {
+  try {
+    const { data } = req.body;
+    
+    if (data && data.type === 'order_created') {
+      const order = data.attributes;
+      const customerEmail = order.customer_email;
+      const variantId = order.variant_id;
+      
+      console.log(`💰 Payment received: ${customerEmail} for variant ${variantId}`);
+      
+      // Find user by email
+      const user = await getUserByEmail(customerEmail);
+      if (user) {
+        // Update subscription status to paid
+        await updateUserSubscriptionStatus(user.id, 'paid', 'premium');
+        console.log(`✅ User ${customerEmail} upgraded to paid plan`);
+      }
+    }
+    
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('❌ Webhook error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
 });
 
 // Error handling
