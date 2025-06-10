@@ -7,6 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const path = require('path');
 const fetch = require('node-fetch');
+const bcrypt = require('bcrypt');
 
 // Middleware
 app.use(helmet({
@@ -570,6 +571,9 @@ const crypto = require('crypto');
 
 // Pricing page route
 app.get('/pricing', (req, res) => {
+  const signupComplete = req.query.signup === 'complete';
+  const message = req.query.message || '';
+  
   res.send(`
     <!DOCTYPE html>
     <html lang="en">
@@ -627,6 +631,16 @@ app.get('/pricing', (req, res) => {
                 transform: translateY(-2px); box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
             }
             .savings { background: #e8f5e8; color: #2d5016; padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; margin-bottom: 15px; }
+            .signup-notice {
+                background: #d1fae5; color: #065f46; padding: 20px; border-radius: 10px; margin-bottom: 30px; text-align: center; border: 1px solid #10b981;
+            }
+            .message { 
+                background: #fef3c7; 
+                padding: 12px; 
+                border-radius: 8px; 
+                margin-bottom: 20px;
+                border-left: 4px solid #f59e0b;
+            }
         </style>
     </head>
     <body>
@@ -635,6 +649,15 @@ app.get('/pricing', (req, res) => {
                 <h1>Choose Your ConnectFlows Plan</h1>
                 <p>Save $100K+ annually with automated Salesforce ↔ HubSpot sync</p>
             </div>
+
+            ${signupComplete ? `
+            <div class="signup-notice">
+                <h3>🎉 Welcome to ConnectFlows!</h3>
+                <p>Complete your subscription to start syncing your Salesforce and HubSpot data.</p>
+            </div>
+            ` : ''}
+            
+            ${message ? `<div class="message">⚠️ ${message}</div>` : ''}
 
             <div class="pricing-grid">
                 <div class="plan">
@@ -702,7 +725,10 @@ app.get('/pricing', (req, res) => {
                     const response = await fetch('/create-checkout', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ plan })
+                        body: JSON.stringify({ 
+                            plan,
+                            signupData: ${signupComplete ? 'true' : 'false'}
+                        })
                     });
                     
                     const data = await response.json();
@@ -733,7 +759,7 @@ app.get('/pricing', (req, res) => {
 // Create checkout session with Lemon Squeezy
 app.post('/create-checkout', async (req, res) => {
   try {
-    const { plan } = req.body;
+    const { plan, signupData } = req.body;
 
     // Map plans to your Lemon Squeezy product variant IDs
     const planVariants = {
@@ -747,6 +773,9 @@ app.post('/create-checkout', async (req, res) => {
       return res.status(400).json({ error: 'Invalid plan selected' });
     }
 
+    // Get signup data from session if available
+    const signupInfo = req.session.pendingSignup || {};
+    
     // Create checkout with Lemon Squeezy API
     const checkoutResponse = await fetch('https://api.lemonsqueezy.com/v1/checkouts', {
       method: 'POST',
@@ -760,10 +789,13 @@ app.post('/create-checkout', async (req, res) => {
           type: 'checkouts',
           attributes: {
             checkout_data: {
-              email: 'customer@example.com',
-              name: 'ConnectFlows Customer',
+              email: signupInfo.email || 'customer@example.com',
+              name: signupInfo.email ? signupInfo.email.split('@')[0] : 'ConnectFlows Customer',
               custom: {
-                plan: plan
+                plan: plan,
+                signup_email: signupInfo.email || '',
+                signup_password: signupInfo.password || '',
+                signup_created: signupInfo.createdAt || ''
               }
             }
           },
@@ -788,6 +820,7 @@ app.post('/create-checkout', async (req, res) => {
     const checkoutData = await checkoutResponse.json();
     
     if (checkoutData.data && checkoutData.data.attributes.url) {
+      console.log(`💰 Created checkout for plan: ${plan}, email: ${signupInfo.email || 'unknown'}`);
       res.json({ checkoutUrl: checkoutData.data.attributes.url });
     } else {
       console.error('Lemon Squeezy API Error:', checkoutData);
@@ -904,7 +937,7 @@ app.get('/signup', (req, res) => {
   `);
 });
 
-// Handle signup form submission
+// Handle signup form submission - REDIRECT TO PRICING FIRST
 app.post('/signup', (req, res) => {
   const { email, password } = req.body;
   
@@ -912,20 +945,30 @@ app.post('/signup', (req, res) => {
     return res.redirect('/signup?message=Please fill in all fields');
   }
   
-  req.session.user = {
-    id: Date.now().toString(),
+  // Store signup data in session for after payment
+  req.session.pendingSignup = {
     email: email,
-    trialStarted: new Date().toISOString(),
+    password: password,
     createdAt: new Date().toISOString()
   };
   
-  console.log('New user signed up:', email);
-  res.redirect('/dashboard');
+  console.log('User signed up, redirecting to pricing:', email);
+  // Redirect to pricing page instead of dashboard
+  res.redirect('/pricing?signup=complete');
 });
 
-// Dashboard route
+// Dashboard route - ONLY FOR PAID USERS
 app.get('/dashboard', requireAuth, (req, res) => {
   const user = req.session.user;
+  
+  // Check if user is paid
+  const isPaidUser = user.subscription_status === 'paid' || user.subscription_status === 'active';
+  
+  if (!isPaidUser) {
+    // User is not paid, redirect to pricing
+    return res.redirect('/pricing?message=Please complete your subscription to access the dashboard');
+  }
+  
   const trialStart = new Date(user.trialStarted);
   const trialEnd = new Date(trialStart.getTime() + (14 * 24 * 60 * 60 * 1000));
   const daysLeft = Math.ceil((trialEnd - new Date()) / (1000 * 60 * 60 * 24));
@@ -972,11 +1015,11 @@ app.get('/dashboard', requireAuth, (req, res) => {
         .btn-orange { background: #f97316; }
         .btn-orange:hover { background: #ea580c; }
         .trial-info { 
-          background: #fef3c7; 
+          background: #d1fae5; 
           padding: 15px; 
           border-radius: 8px; 
           margin: 20px 0;
-          border-left: 4px solid #f59e0b;
+          border-left: 4px solid #10b981;
         }
         .status {
           display: inline-block;
@@ -994,12 +1037,12 @@ app.get('/dashboard', requireAuth, (req, res) => {
     <body>
       <div class="header">
         <h1>🎛️ ConnectFlows Dashboard</h1>
-        <p>Welcome back, <strong>${user.email}</strong>! <span class="status">Free Trial</span></p>
+        <p>Welcome back, <strong>${user.email}</strong>! <span class="status">Paid Plan</span></p>
       </div>
       
       <div class="trial-info">
-        ⏱️ <strong>Free Trial: ${daysLeft} days remaining</strong>
-        <br><small>Connect your CRMs and test unlimited syncing during your trial.</small>
+        ✅ <strong>Paid Subscription Active</strong>
+        <br><small>You have full access to all ConnectFlows features.</small>
       </div>
       
       <div class="card">
@@ -1008,8 +1051,7 @@ app.get('/dashboard', requireAuth, (req, res) => {
         
         <a href="/auth/salesforce" class="btn">
           ⚡ Connect Salesforce
-        </a
-      
+        </a>
         
         <a href="/auth/hubspot" class="btn">
           🧡 Connect HubSpot
@@ -1017,9 +1059,9 @@ app.get('/dashboard', requireAuth, (req, res) => {
       </div>
       
       <div class="card">
-        <h3>💰 Keep Your Sync Running</h3>
-        <p>Upgrade to a paid plan to continue syncing after your trial ends.</p>
-        <a href="/pricing" class="btn">View Pricing Plans</a>
+        <h3>💰 Manage Your Subscription</h3>
+        <p>Update your billing information or change your plan.</p>
+        <a href="/pricing" class="btn">Manage Subscription</a>
         <a href="/logout" style="color: #64748b; text-decoration: none; margin-left: 20px;">Sign Out</a>
       </div> 
       <script>
@@ -1070,30 +1112,20 @@ app.get('/dashboard', requireAuth, (req, res) => {
                     // Show results
                     const resultDiv = document.createElement('div');
                     resultDiv.style.cssText = 'background: #d1fae5; padding: 20px; border-radius: 8px; margin-top: 20px; color: #065f46; border: 1px solid #10b981;';
-                    // Build result HTML with sample contacts
-let resultHTML = '<h4>✅ Real Sync Results!</h4>';
-resultHTML += '<p>📊 Salesforce Contacts: ' + (data.real_results?.salesforce?.contacts_found || 0) + '</p>';
-
-// Add sample contacts if they exist
-if (data.real_results?.salesforce?.sample_contacts && data.real_results.salesforce.sample_contacts.length > 0) {
-  resultHTML += '<p>👥 Sample contacts:</p><ul style="margin: 10px 0; padding-left: 20px;">';
-  (data.real_results?.salesforce?.real_sample_contacts || []).forEach(contact => {
-    resultHTML += '<li style="margin: 5px 0;"><strong>' + (contact.name || 'No Name') + '</strong>';
-    if (contact.company && contact.company !== 'No Company') {
-      resultHTML += ' (' + contact.company + ')';
-    }
-    if (contact.email) {
-      resultHTML += ' - ' + contact.email;
-    }
-    resultHTML += '</li>';
-  });
-  resultHTML += '</ul>';
-}
-
-resultHTML += '<p>💰 Monthly Savings: ' + (data.real_results?.business_impact?.monthly_cost_savings || '$397') + '</p>';
-
-resultDiv.innerHTML = resultHTML;
                     
+                    let resultHTML = '<h4>✅ Real Sync Results!</h4>';
+                    if (data.user_status === 'paid') {
+                      resultHTML += '<p>💰 <strong>Paid Plan Results:</strong></p>';
+                      resultHTML += '<p>📊 Salesforce Contacts: ' + (data.real_results?.salesforce?.contacts_found || 0) + '</p>';
+                      resultHTML += '<p>🔄 HubSpot Sync: ' + (data.real_results?.hubspot?.total_synced || 0) + ' contacts</p>';
+                      resultHTML += '<p>💸 Monthly Savings: ' + (data.real_results?.business_impact?.monthly_cost_savings || '$397') + '</p>';
+                    } else {
+                      resultHTML += '<p>🎭 <strong>Demo Mode Results:</strong></p>';
+                      resultHTML += '<p>📊 Demo Contacts: ' + (data.demo_results?.salesforce?.contacts_found || 0) + '</p>';
+                      resultHTML += '<p>⚠️ Limited to 5 contacts - upgrade for full sync</p>';
+                    }
+                    
+                    resultDiv.innerHTML = resultHTML;
                     sfButton.parentNode.appendChild(resultDiv);
                   } else {
                     sfButton.textContent = '❌ Sync Failed';
@@ -1676,15 +1708,35 @@ app.post('/webhooks/lemonsqueezy', async (req, res) => {
       const order = data.attributes;
       const customerEmail = order.customer_email;
       const variantId = order.variant_id;
+      const customData = order.custom || {};
       
       console.log(`💰 Payment received: ${customerEmail} for variant ${variantId}`);
+      console.log('📋 Custom data:', customData);
       
-      // Find user by email
-      const user = await getUserByEmail(customerEmail);
-      if (user) {
-        // Update subscription status to paid
-        await updateUserSubscriptionStatus(user.id, 'paid', 'premium');
-        console.log(`✅ User ${customerEmail} upgraded to paid plan`);
+      // Check if this is a new signup with payment
+      if (customData.signup_email && customData.signup_password) {
+        console.log('🆕 Creating new user account from payment');
+        
+        // Create the user account in database
+        const passwordHash = await bcrypt.hash(customData.signup_password, 10);
+        
+        const newUser = await createUser(customData.signup_email, passwordHash);
+        
+        // Update user to paid status
+        await updateUserSubscriptionStatus(newUser.id, 'paid', customData.plan || 'starter');
+        
+        console.log(`✅ New paid user created: ${customData.signup_email}`);
+        
+      } else {
+        // Existing user payment
+        const user = await getUserByEmail(customerEmail);
+        if (user) {
+          // Update subscription status to paid
+          await updateUserSubscriptionStatus(user.id, 'paid', customData.plan || 'starter');
+          console.log(`✅ User ${customerEmail} upgraded to paid plan`);
+        } else {
+          console.log(`⚠️ Payment received but user not found: ${customerEmail}`);
+        }
       }
     }
     
@@ -1693,6 +1745,65 @@ app.post('/webhooks/lemonsqueezy', async (req, res) => {
     console.error('❌ Webhook error:', error);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
+});
+
+// Success page after payment
+app.get('/success', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Payment Successful - ConnectFlows</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          max-width: 600px; 
+          margin: 50px auto; 
+          padding: 20px;
+          background: #f8fafc;
+          text-align: center;
+        }
+        .success-card {
+          background: white;
+          padding: 40px;
+          border-radius: 15px;
+          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+          border: 2px solid #10b981;
+        }
+        .success-icon {
+          font-size: 4rem;
+          margin-bottom: 20px;
+        }
+        .btn { 
+          padding: 15px 30px; 
+          background: #10b981; 
+          color: white; 
+          text-decoration: none; 
+          border-radius: 8px; 
+          display: inline-block; 
+          margin: 20px 10px;
+          font-weight: 500;
+          font-size: 1.1rem;
+        }
+        .btn:hover { background: #059669; }
+        h1 { color: #1e293b; margin-bottom: 10px; }
+        p { color: #64748b; margin-bottom: 20px; }
+      </style>
+    </head>
+    <body>
+      <div class="success-card">
+        <div class="success-icon">🎉</div>
+        <h1>Payment Successful!</h1>
+        <p>Welcome to ConnectFlows! Your subscription is now active.</p>
+        <p>You can now access all premium features including unlimited Salesforce ↔ HubSpot sync.</p>
+        
+        <a href="/dashboard" class="btn">🚀 Go to Dashboard</a>
+        <a href="/pricing" class="btn" style="background: #6b7280;">💰 Manage Subscription</a>
+      </div>
+    </body>
+    </html>
+  `);
 });
 
 // Error handling
