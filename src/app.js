@@ -561,6 +561,225 @@ app.get('/', (req, res) => {
     environment: process.env.NODE_ENV || 'development'
   });
 });
+const crypto = require('crypto');
+// Lemon Squeezy Billing Routes
+
+// Pricing page route
+app.get('/pricing', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ConnectFlows - Pricing</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                color: #333;
+            }
+            .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+            .header { text-align: center; color: white; margin-bottom: 50px; }
+            .header h1 { font-size: 3rem; margin-bottom: 20px; }
+            .header p { font-size: 1.2rem; opacity: 0.9; }
+            .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; }
+            .plan { 
+                background: white; border-radius: 20px; padding: 40px 30px; text-align: center;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.1); transition: transform 0.3s ease;
+                position: relative; overflow: hidden;
+            }
+            .plan:hover { transform: translateY(-10px); }
+            .plan.popular { 
+                border: 3px solid #667eea; transform: scale(1.05);
+                box-shadow: 0 25px 50px rgba(102, 126, 234, 0.3);
+            }
+            .plan.popular::before {
+                content: 'Most Popular'; position: absolute; top: 20px; right: -35px;
+                background: #667eea; color: white; padding: 8px 40px;
+                transform: rotate(45deg); font-size: 0.9rem; font-weight: bold;
+            }
+            .plan-name { font-size: 1.5rem; font-weight: bold; margin-bottom: 10px; color: #333; }
+            .plan-price { font-size: 3rem; font-weight: bold; color: #667eea; margin-bottom: 20px; }
+            .plan-price span { font-size: 1rem; color: #666; }
+            .plan-features { list-style: none; margin-bottom: 30px; }
+            .plan-features li { 
+                padding: 10px 0; color: #666; position: relative; padding-left: 25px;
+                border-bottom: 1px solid #f0f0f0;
+            }
+            .plan-features li::before { 
+                content: '✓'; position: absolute; left: 0; color: #4CAF50; font-weight: bold; 
+            }
+            .cta-button { 
+                background: linear-gradient(135deg, #667eea, #764ba2); color: white;
+                border: none; padding: 15px 30px; border-radius: 50px; font-size: 1.1rem;
+                cursor: pointer; transition: all 0.3s ease; text-decoration: none;
+                display: inline-block; font-weight: bold;
+            }
+            .cta-button:hover { 
+                background: linear-gradient(135deg, #5a6fd8, #6a42a0);
+                transform: translateY(-2px); box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            }
+            .savings { background: #e8f5e8; color: #2d5016; padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; margin-bottom: 15px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Choose Your ConnectFlows Plan</h1>
+                <p>Save $100K+ annually with automated Salesforce ↔ HubSpot sync</p>
+            </div>
+
+            <div class="pricing-grid">
+                <div class="plan">
+                    <div class="plan-name">Starter</div>
+                    <div class="savings">Save $45K+ annually</div>
+                    <div class="plan-price">$197<span>/month</span></div>
+                    <ul class="plan-features">
+                        <li>Up to 5,000 contacts</li>
+                        <li>Bidirectional Salesforce ↔ HubSpot sync</li>
+                        <li>Real-time updates</li>
+                        <li>Basic field mapping</li>
+                        <li>Email support</li>
+                        <li>Conflict resolution</li>
+                    </ul>
+                    <button class="cta-button" onclick="subscribe('starter')">Start Free Trial</button>
+                </div>
+
+                <div class="plan popular">
+                    <div class="plan-name">Professional</div>
+                    <div class="savings">Save $195K+ annually</div>
+                    <div class="plan-price">$397<span>/month</span></div>
+                    <ul class="plan-features">
+                        <li>Up to 25,000 contacts</li>
+                        <li>Advanced bidirectional sync</li>
+                        <li>Custom field mapping</li>
+                        <li>Real-time webhooks</li>
+                        <li>Priority support</li>
+                        <li>Advanced analytics</li>
+                        <li>Team collaboration</li>
+                        <li>Duplicate detection</li>
+                    </ul>
+                    <button class="cta-button" onclick="subscribe('professional')">Start Free Trial</button>
+                </div>
+
+                <div class="plan">
+                    <div class="plan-name">Enterprise</div>
+                    <div class="savings">Save $490K+ annually</div>
+                    <div class="plan-price">$797<span>/month</span></div>
+                    <ul class="plan-features">
+                        <li>Unlimited contacts</li>
+                        <li>White-label integration</li>
+                        <li>Multi-instance sync</li>
+                        <li>24/7 phone support</li>
+                        <li>Custom development</li>
+                        <li>Enterprise security (SOC2)</li>
+                        <li>SLA guarantees</li>
+                        <li>Dedicated account manager</li>
+                    </ul>
+                    <button class="cta-button" onclick="subscribe('enterprise')">Start Free Trial</button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            async function subscribe(plan) {
+                try {
+                    const response = await fetch('/create-checkout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ plan })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.checkoutUrl) {
+                        window.location.href = data.checkoutUrl;
+                    } else {
+                        alert('Error creating checkout. Please try again.');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error creating checkout. Please try again.');
+                }
+            }
+        </script>
+    </body>
+    </html>
+  `);
+});
+
+// Create checkout session with Lemon Squeezy
+app.post('/create-checkout', async (req, res) => {
+  try {
+    const { plan } = req.body;
+
+    // Map plans to your Lemon Squeezy product variant IDs
+    const planVariants = {
+      starter: '839923',      // Basic/Starter plan
+      professional: '845532', // Professional plan  
+      enterprise: '845546'    // Enterprise plan
+    };
+
+    const variantId = planVariants[plan];
+    if (!variantId) {
+      return res.status(400).json({ error: 'Invalid plan selected' });
+    }
+
+    // Create checkout with Lemon Squeezy API
+    const checkoutResponse = await fetch('https://api.lemonsqueezy.com/v1/checkouts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.LEMON_SQUEEZY_API_KEY}`,
+        'Content-Type': 'application/vnd.api+json',
+        'Accept': 'application/vnd.api+json'
+      },
+      body: JSON.stringify({
+        data: {
+          type: 'checkouts',
+          attributes: {
+            checkout_data: {
+              email: 'customer@example.com',
+              name: 'ConnectFlows Customer',
+              custom: {
+                plan: plan
+              }
+            }
+          },
+          relationships: {
+            store: {
+              data: {
+                type: 'stores',
+                id: process.env.LEMON_SQUEEZY_STORE_ID
+              }
+            },
+            variant: {
+              data: {
+                type: 'variants',
+                id: variantId
+              }
+            }
+          }
+        }
+      })
+    });
+
+    const checkoutData = await checkoutResponse.json();
+    
+    if (checkoutData.data && checkoutData.data.attributes.url) {
+      res.json({ checkoutUrl: checkoutData.data.attributes.url });
+    } else {
+      console.error('Lemon Squeezy API Error:', checkoutData);
+      res.status(500).json({ error: 'Failed to create checkout session' });
+    }
+
+  } catch (error) {
+    console.error('Checkout creation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 
 // Health check
 app.get('/health', (req, res) => {
