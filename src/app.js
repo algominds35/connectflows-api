@@ -837,7 +837,7 @@ resultHTML += '<p>📊 Salesforce Contacts: ' + (data.real_results?.salesforce?.
 // Add sample contacts if they exist
 if (data.real_results?.salesforce?.sample_contacts && data.real_results.salesforce.sample_contacts.length > 0) {
   resultHTML += '<p>👥 Sample contacts:</p><ul style="margin: 10px 0; padding-left: 20px;">';
-  data.real_results.salesforce.real_sample_contacts.forEach(contact => {
+  (data.real_results?.salesforce?.real_sample_contacts || []).forEach(contact => {
     resultHTML += '<li style="margin: 5px 0;"><strong>' + (contact.name || 'No Name') + '</strong>';
     if (contact.company && contact.company !== 'No Company') {
       resultHTML += ' (' + contact.company + ')';
