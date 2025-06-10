@@ -889,7 +889,7 @@ resultDiv.innerHTML = resultHTML;
 // Demo page
 // Demo page  
 app.get('/demo', (req, res) => {
-  res.sendFile(path.join(__dirname, 'src', 'demo.html'));
+  res.sendFile(path.join(__dirname, 'demo.html'));
 });
 
 // Logout route
