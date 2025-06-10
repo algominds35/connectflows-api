@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const path = require('path');
 const fetch = require('node-fetch');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 // Middleware
 app.use(helmet({
@@ -957,13 +957,12 @@ app.post('/signup', (req, res) => {
   res.redirect('/pricing?signup=complete');
 });
 
-// Dashboard route - ONLY FOR PAID USERS
+// Dashboard route - ONLY FOR PAID/TRIALING USERS
 app.get('/dashboard', requireAuth, (req, res) => {
   const user = req.session.user;
-  
-  // Check if user is paid
-  const isPaidUser = user.subscription_status === 'paid' || user.subscription_status === 'active';
-  
+  // Accept 'trialing', 'active', or 'paid' as valid subscription statuses
+  const isPaidUser = ['paid', 'active', 'trialing'].includes(user.subscription_status);
+
   if (!isPaidUser) {
     // User is not paid, redirect to pricing
     return res.redirect('/pricing?message=Please complete your subscription to access the dashboard');
@@ -1037,11 +1036,11 @@ app.get('/dashboard', requireAuth, (req, res) => {
     <body>
       <div class="header">
         <h1>🎛️ ConnectFlows Dashboard</h1>
-        <p>Welcome back, <strong>${user.email}</strong>! <span class="status">Paid Plan</span></p>
+        <p>Welcome back, <strong>${user.email}</strong>! <span class="status">${user.subscription_status.charAt(0).toUpperCase() + user.subscription_status.slice(1)}</span></p>
       </div>
       
       <div class="trial-info">
-        ✅ <strong>Paid Subscription Active</strong>
+        ✅ <strong>Subscription Active</strong>
         <br><small>You have full access to all ConnectFlows features.</small>
       </div>
       
@@ -1521,17 +1520,17 @@ app.get('/api/sync/contacts', (req, res) => {
   });
 });
 
-// REAL ENTERPRISE SYNC ENDPOINT FOR PAYING CUSTOMERS
+// REAL ENTERPRISE SYNC ENDPOINT FOR PAYING/TRIALING CUSTOMERS
 app.post('/api/sync/contacts', requireAuth, async (req, res) => {
   try {
     const user = req.session.user;
     console.log(`🚀 Sync request from user: ${user.email}`);
 
-    // Check if user is paid or on trial
-    const isPaidUser = user.subscription_status === 'paid' || user.subscription_status === 'active';
-    const isTrialExpired = new Date() > new Date(user.trial_ends_at);
+    // Accept 'trialing', 'active', or 'paid' as valid subscription statuses
+    const isPaidUser = ['paid', 'active', 'trialing'].includes(user.subscription_status);
+    const isTrialExpired = false; // Lemon Squeezy handles trial expiration
     
-    console.log(`💰 User status: ${isPaidUser ? 'PAID' : 'TRIAL'}, Trial expired: ${isTrialExpired}`);
+    console.log(`💰 User status: ${isPaidUser ? 'PAID/TRIALING' : 'TRIAL'}, Subscription status: ${user.subscription_status}`);
 
     // Validate customer has required connections
     if (!req.session.salesforceToken) {
@@ -1542,10 +1541,10 @@ app.post('/api/sync/contacts', requireAuth, async (req, res) => {
       });
     }
 
-    // 🎯 DECISION: Use REAL sync for paid users, DEMO sync for trial users
+    // Use REAL sync for paid/trialing users, DEMO sync for others
     if (isPaidUser && !isTrialExpired) {
-      // 💰 PAID USER - Use REAL enterprise sync engine
-      console.log(`🚀 REAL: Enterprise sync for PAID customer: ${user.email}`);
+      // 💰 PAID/TRIALING USER - Use REAL enterprise sync engine
+      console.log(`🚀 REAL: Enterprise sync for PAID/TRIALING customer: ${user.email}`);
       
       const syncEngine = new RealSyncEngine(
         user.id,
@@ -1566,7 +1565,7 @@ app.post('/api/sync/contacts', requireAuth, async (req, res) => {
         success: true,
         message: syncResults.message,
         sync_type: 'enterprise_bidirectional',
-        user_status: 'paid',
+        user_status: user.subscription_status,
         real_results: {
           salesforce: {
             status: 'connected',
@@ -1709,6 +1708,7 @@ app.post('/webhooks/lemonsqueezy', async (req, res) => {
       const customerEmail = order.customer_email;
       const variantId = order.variant_id;
       const customData = order.custom || {};
+      const status = order.status || 'trialing'; // Lemon Squeezy sends 'trialing', 'active', etc.
       
       console.log(`💰 Payment received: ${customerEmail} for variant ${variantId}`);
       console.log('📋 Custom data:', customData);
@@ -1722,18 +1722,18 @@ app.post('/webhooks/lemonsqueezy', async (req, res) => {
         
         const newUser = await createUser(customData.signup_email, passwordHash);
         
-        // Update user to paid status
-        await updateUserSubscriptionStatus(newUser.id, 'paid', customData.plan || 'starter');
+        // Update user to paid/trialing status
+        await updateUserSubscriptionStatus(newUser.id, status, customData.plan || 'starter');
         
-        console.log(`✅ New paid user created: ${customData.signup_email}`);
+        console.log(`✅ New paid/trialing user created: ${customData.signup_email}`);
         
       } else {
         // Existing user payment
         const user = await getUserByEmail(customerEmail);
         if (user) {
-          // Update subscription status to paid
-          await updateUserSubscriptionStatus(user.id, 'paid', customData.plan || 'starter');
-          console.log(`✅ User ${customerEmail} upgraded to paid plan`);
+          // Update subscription status to paid/trialing
+          await updateUserSubscriptionStatus(user.id, status, customData.plan || 'starter');
+          console.log(`✅ User ${customerEmail} upgraded to paid/trialing plan`);
         } else {
           console.log(`⚠️ Payment received but user not found: ${customerEmail}`);
         }
