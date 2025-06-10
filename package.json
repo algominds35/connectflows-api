@@ -2,10 +2,10 @@
   "name": "sf-hubspot-sync",
   "version": "1.0.0",
   "description": "Salesforce and HubSpot integration platform",
-  "main": "app.js",
+  "main": "src/app.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "nodemon app.js",
+    "start": "src/app.js",
+    "dev": "nodemon src/app.js",
     "test": "echo \"Tests coming soon\" && exit 1"
   },
   "keywords": [
