@@ -409,16 +409,33 @@ class RealSyncEngine {
       // Get real Salesforce contacts
       const salesforceContacts = await this.getSalesforceContacts();
       console.log(`📊 REAL: Found ${salesforceContacts.length} Salesforce contacts`);
+      console.log('🔍 All Salesforce contacts found:', salesforceContacts.map(c => c.Email));
 
       const syncResults = {
         salesforce_contacts_found: salesforceContacts.length,
-        real_sample_contacts: salesforceContacts.slice(0, 5).map(c => ({
-          name: `${c.FirstName || ''} ${c.LastName || ''}`.trim(),
-          email: c.Email,
-          company: c.Account?.Name || 'No Company',
-          phone: c.Phone || '',
-          status: 'from_salesforce'
-        })),
+        real_sample_contacts: (() => {
+          console.log('🔍 ALL CONTACTS:', salesforceContacts.map(c => c.Email));
+          console.log('🔍 ALICE CONTACT:', salesforceContacts.find(c => c.FirstName?.toLowerCase().includes('alice')));
+          
+          const filtered = salesforceContacts.filter(contact => 
+            contact.Email && 
+            !contact.Email.includes('edge.com') && 
+            !contact.Email.includes('burlington.com') && 
+            !contact.Email.includes('pyramid.net') && 
+            !contact.Email.includes('dickenson.com')
+          );
+          
+          console.log('🔍 AFTER FILTER:', filtered.map(c => c.Email));
+          
+          return filtered.slice(0, 5).map(c => ({
+            name: `${c.FirstName || ''} ${c.LastName || ''}`.trim(),
+            email: c.Email,
+            company: c.Account?.Name || 'No Company',
+            phone: c.Phone || '',
+            status: 'from_salesforce'
+          }));
+        })(),
+       
         hubspot_sync_attempted: false,
         hubspot_created: 0,
         hubspot_updated: 0,
@@ -820,7 +837,7 @@ resultHTML += '<p>📊 Salesforce Contacts: ' + (data.real_results?.salesforce?.
 // Add sample contacts if they exist
 if (data.real_results?.salesforce?.sample_contacts && data.real_results.salesforce.sample_contacts.length > 0) {
   resultHTML += '<p>👥 Sample contacts:</p><ul style="margin: 10px 0; padding-left: 20px;">';
-  data.real_results.salesforce.sample_contacts.forEach(contact => {
+  data.real_results.salesforce.real_sample_contacts.forEach(contact => {
     resultHTML += '<li style="margin: 5px 0;"><strong>' + (contact.name || 'No Name') + '</strong>';
     if (contact.company && contact.company !== 'No Company') {
       resultHTML += ' (' + contact.company + ')';
@@ -1296,6 +1313,7 @@ app.post('/api/sync/contacts', requireAuth, async (req, res) => {
     
     // Perform REAL enterprise bidirectional sync
     const syncResults = await syncEngine.performEnterpriseBidirectionalSync();
+   
 
     // Calculate real business value for paying customer
     const totalContacts = syncResults.salesforce_contacts_found;
@@ -1336,7 +1354,8 @@ app.post('/api/sync/contacts', requireAuth, async (req, res) => {
           support: '24/7 monitoring'
         }
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString() 
+      
     });
 
   } catch (error) {
