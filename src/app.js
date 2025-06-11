@@ -4,6 +4,8 @@ const helmet = require('helmet');
 require('dotenv').config();
 const session = require('express-session');
 const app = express();
+console.log('--- app.js started ---');
+console.log('🚀 ConnectFlows Express App - Initialization Start');
 const PORT = process.env.PORT || 3000;
 const path = require('path');
 const fetch = require('node-fetch');
@@ -13,8 +15,15 @@ const bcrypt = require('bcryptjs');
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://connectfloww.lemonsqueezy.com", "https://app.lemonsqueezy.com"],
       styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https://*"],
+      connectSrc: ["'self'", "https://api.lemonsqueezy.com", "https://o4505075539902464.ingest.sentry.io"],
+      frameSrc: ["'self'", "https://connectfloww.lemonsqueezy.com", "https://app.lemonsqueezy.com"],
+      childSrc: ["'self'", "https://connectfloww.lemonsqueezy.com", "https://app.lemonsqueezy.com"],
+      workerSrc: ["'self'", "blob:", "https://connectfloww.lemonsqueezy.com"],
+      fontSrc: ["'self'", "data:", "https://*"],
     },
   },
 }));
@@ -25,7 +34,10 @@ app.use(session({
   secret: 'connectflows-secret-2024',
   resave: false,
   saveUninitialized: false
-})); // Authentication middleware
+}));
+console.log('✅ Middleware setup complete.');
+
+// Authentication middleware
 function requireAuth(req, res, next) {
   if (!req.session || !req.session.user) {
     return res.redirect('/signup?message=Please sign up to test the demo');
@@ -100,6 +112,7 @@ async function initDatabase() {
 
 // Initialize database on startup
 initDatabase();
+console.log('✅ Database initialization triggered.');
 
 // User data functions
 async function createUser(email, passwordHash) {
@@ -311,239 +324,7 @@ async function performSync(userId) {
 // ========================================
 // REAL SYNC ENGINE FOR PAYING CUSTOMERS
 // ========================================
-
-class HubSpotAPI {
-  constructor(accessToken) {
-    this.accessToken = accessToken;
-    this.baseURL = 'https://api.hubapi.com';
-  }
-
-  async createContact(contactData) {
-    try {
-      const response = await fetch(`${this.baseURL}/crm/v3/objects/contacts`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          properties: contactData
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HubSpot API error: ${response.status} ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ REAL: Created HubSpot contact:', result.id);
-      return result;
-    } catch (error) {
-      console.error('❌ Failed to create HubSpot contact:', error);
-      throw error;
-    }
-  }
-
-  async findContactByEmail(email) {
-    try {
-      const response = await fetch(`${this.baseURL}/crm/v3/objects/contacts/search`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          filterGroups: [{
-            filters: [{
-              propertyName: 'email',
-              operator: 'EQ',
-              value: email
-            }]
-          }],
-          properties: ['email', 'firstname', 'lastname', 'phone', 'company']
-        })
-      });
-
-      const result = await response.json();
-      return result.results && result.results.length > 0 ? result.results[0] : null;
-    } catch (error) {
-      console.error('❌ Failed to find HubSpot contact:', error);
-      return null;
-    }
-  }
-
-  async updateContact(contactId, contactData) {
-    try {
-      const response = await fetch(`${this.baseURL}/crm/v3/objects/contacts/${contactId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          properties: contactData
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HubSpot API error: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ REAL: Updated HubSpot contact:', contactId);
-      return result;
-    } catch (error) {
-      console.error('❌ Failed to update HubSpot contact:', error);
-      throw error;
-    }
-  }
-}
-
-class RealSyncEngine {
-  constructor(userId, salesforceToken, salesforceInstanceUrl, hubspotToken) {
-    this.userId = userId;
-    this.salesforceToken = salesforceToken;
-    this.salesforceInstanceUrl = salesforceInstanceUrl;
-    this.hubspotToken = hubspotToken;
-  }
-
-  async performEnterpriseBidirectionalSync() {
-    try {
-      console.log(`🚀 REAL: Starting enterprise sync for paying customer ${this.userId}`);
-
-      // Get real Salesforce contacts
-      const salesforceContacts = await this.getSalesforceContacts();
-      console.log(`📊 REAL: Found ${salesforceContacts.length} Salesforce contacts`);
-      console.log('🔍 All Salesforce contacts found:', salesforceContacts.map(c => c.Email));
-
-      const syncResults = {
-        salesforce_contacts_found: salesforceContacts.length,
-        real_sample_contacts: (() => {
-          console.log('🔍 ALL CONTACTS:', salesforceContacts.map(c => c.Email));
-          console.log('🔍 ALICE CONTACT:', salesforceContacts.find(c => c.FirstName?.toLowerCase().includes('alice')));
-          
-          const filtered = salesforceContacts.filter(contact => 
-            contact.Email && 
-            !contact.Email.includes('edge.com') && 
-            !contact.Email.includes('burlington.com') && 
-            !contact.Email.includes('pyramid.net') && 
-            !contact.Email.includes('dickenson.com')
-          );
-          
-          console.log('🔍 AFTER FILTER:', filtered.map(c => c.Email));
-          
-          return filtered.slice(0, 5).map(c => ({
-            name: `${c.FirstName || ''} ${c.LastName || ''}`.trim(),
-            email: c.Email,
-            company: c.Account?.Name || 'No Company',
-            phone: c.Phone || '',
-            status: 'from_salesforce'
-          }));
-        })(),
-       
-        hubspot_sync_attempted: false,
-        hubspot_created: 0,
-        hubspot_updated: 0,
-        message: 'Salesforce data loaded successfully'
-      };
-
-      // Perform REAL HubSpot sync if connected
-      if (this.hubspotToken) {
-        console.log('🔄 REAL: Performing bidirectional sync to HubSpot...');
-        const hubspotAPI = new HubSpotAPI(this.hubspotToken);
-        let created = 0;
-        let updated = 0;
-        
-        // Sync first 10 contacts for enterprise demo
-        for (const contact of salesforceContacts.slice(0, 10)) {
-          if (contact.Email) {
-            try {
-              const existing = await hubspotAPI.findContactByEmail(contact.Email);
-              
-              const hubspotContactData = {
-                email: contact.Email,
-                firstname: contact.FirstName || '',
-                lastname: contact.LastName || '',
-                phone: contact.Phone || '',
-                company: contact.Account?.Name || '',
-                salesforce_contact_id: contact.Id,
-                last_sync_date: new Date().toISOString(),
-                data_source: 'ConnectFlows_Salesforce_Sync'
-              };
-
-              if (existing) {
-                // Update existing contact
-                await hubspotAPI.updateContact(existing.id, hubspotContactData);
-                updated++;
-                console.log(`✅ REAL: Updated HubSpot contact ${contact.Email}`);
-              } else {
-                // Create new contact
-                await hubspotAPI.createContact(hubspotContactData);
-                created++;
-                console.log(`✅ REAL: Created HubSpot contact ${contact.Email}`);
-              }
-
-              // Rate limiting - respect API limits
-              await this.sleep(200); // 200ms between requests
-              
-            } catch (contactError) {
-              console.error(`❌ REAL: Sync failed for ${contact.Email}:`, contactError.message);
-            }
-          }
-        }
-        
-        syncResults.hubspot_sync_attempted = true;
-        syncResults.hubspot_created = created;
-        syncResults.hubspot_updated = updated;
-        syncResults.message = `REAL sync complete: ${created} created, ${updated} updated in HubSpot`;
-        
-        // Update sample contacts to show sync status
-        syncResults.real_sample_contacts = syncResults.real_sample_contacts.map(contact => ({
-          ...contact,
-          sync_status: 'synced_to_hubspot'
-        }));
-      }
-
-      return syncResults;
-    } catch (error) {
-      console.error('❌ REAL: Enterprise sync failed:', error);
-      throw error;
-    }
-  }
-
-  async getSalesforceContacts() {
-    try {
-      const query = 'SELECT Id,FirstName,LastName,Email,Phone,Account.Name,Title,Department FROM Contact WHERE Email != null ORDER BY LastModifiedDate DESC LIMIT 100';
-      const response = await fetch(`${this.salesforceInstanceUrl}/services/data/v58.0/query/?q=${encodeURIComponent(query)}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.salesforceToken}`,
-          'Accept': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Salesforce API error: ${response.status} ${errorText}`);
-      }
-
-      const result = await response.json();
-      return result.records || [];
-    } catch (error) {
-      console.error('❌ Failed to get Salesforce contacts:', error);
-      throw error;
-    }
-  }
-
-  sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-}
-
-// ========================================
-// END OF REAL SYNC ENGINE
-// ========================================
+console.log('➡️ Defining / route.');
 app.get('/', (req, res) => {
   res.json({ 
     message: '🚀 SF-HubSpot Sync API is running!',
@@ -568,194 +349,338 @@ app.get('/', (req, res) => {
 });
 const crypto = require('crypto');
 // Lemon Squeezy Billing Routes
-
+console.log('➡️ Defining /pricing route.');
 // Pricing page route
 app.get('/pricing', (req, res) => {
-  const signupComplete = req.query.signup === 'complete';
   const message = req.query.message || '';
+  const signupComplete = req.query.signup === 'complete';
   
   res.send(`
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>ConnectFlows - Pricing</title>
-        <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { 
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                color: #333;
-            }
-            .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-            .header { text-align: center; color: white; margin-bottom: 50px; }
-            .header h1 { font-size: 3rem; margin-bottom: 20px; }
-            .header p { font-size: 1.2rem; opacity: 0.9; }
-            .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; }
-            .plan { 
-                background: white; border-radius: 20px; padding: 40px 30px; text-align: center;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.1); transition: transform 0.3s ease;
-                position: relative; overflow: hidden;
-            }
-            .plan:hover { transform: translateY(-10px); }
-            .plan.popular { 
-                border: 3px solid #667eea; transform: scale(1.05);
-                box-shadow: 0 25px 50px rgba(102, 126, 234, 0.3);
-            }
-            .plan.popular::before {
-                content: 'Most Popular'; position: absolute; top: 20px; right: -35px;
-                background: #667eea; color: white; padding: 8px 40px;
-                transform: rotate(45deg); font-size: 0.9rem; font-weight: bold;
-            }
-            .plan-name { font-size: 1.5rem; font-weight: bold; margin-bottom: 10px; color: #333; }
-            .plan-price { font-size: 3rem; font-weight: bold; color: #667eea; margin-bottom: 20px; }
-            .plan-price span { font-size: 1rem; color: #666; }
-            .plan-features { list-style: none; margin-bottom: 30px; }
-            .plan-features li { 
-                padding: 10px 0; color: #666; position: relative; padding-left: 25px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            .plan-features li::before { 
-                content: '✓'; position: absolute; left: 0; color: #4CAF50; font-weight: bold; 
-            }
-            .cta-button { 
-                background: linear-gradient(135deg, #667eea, #764ba2); color: white;
-                border: none; padding: 15px 30px; border-radius: 50px; font-size: 1.1rem;
-                cursor: pointer; transition: all 0.3s ease; text-decoration: none;
-                display: inline-block; font-weight: bold;
-            }
-            .cta-button:hover { 
-                background: linear-gradient(135deg, #5a6fd8, #6a42a0);
-                transform: translateY(-2px); box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-            }
-            .savings { background: #e8f5e8; color: #2d5016; padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; margin-bottom: 15px; }
-            .signup-notice {
-                background: #d1fae5; color: #065f46; padding: 20px; border-radius: 10px; margin-bottom: 30px; text-align: center; border: 1px solid #10b981;
-            }
-            .message { 
-                background: #fef3c7; 
-                padding: 12px; 
-                border-radius: 8px; 
-                margin-bottom: 20px;
-                border-left: 4px solid #f59e0b;
-            }
-        </style>
+      <title>Pricing Plans - ConnectFlows</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <script src="https://cdn.tailwindcss.com"></script>
+      <style>
+        .gradient-bg {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover {
+          transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .checkout-btn {
+          transition: all 0.3s ease;
+        }
+        .checkout-btn:hover {
+          transform: translateY(-2px);
+        }
+        .checkout-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
+        }
+      </style>
     </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>Choose Your ConnectFlows Plan</h1>
-                <p>Save $100K+ annually with automated Salesforce ↔ HubSpot sync</p>
-            </div>
+    <body class="bg-gray-50">
+      <div class="min-h-screen">
+        <!-- Header -->
+        <header class="gradient-bg text-white py-8">
+          <div class="container mx-auto px-4 text-center">
+            <h1 class="text-4xl font-bold mb-4">Choose Your ConnectFlows Plan</h1>
+            <p class="text-xl opacity-90">Sync Salesforce ↔ HubSpot with enterprise-grade reliability</p>
+          </div>
+        </header>
 
-            ${signupComplete ? `
-            <div class="signup-notice">
-                <h3>🎉 Welcome to ConnectFlows!</h3>
-                <p>Complete your subscription to start syncing your Salesforce and HubSpot data.</p>
+        <!-- Message Banner -->
+        ${message ? `
+          <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                </svg>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-yellow-700">${message}</p>
+              </div>
             </div>
-            ` : ''}
+          </div>
+        ` : ''}
+
+        <!-- Signup Complete Banner -->
+        ${signupComplete ? `
+          <div class="bg-green-50 border-l-4 border-green-400 p-4 mb-8">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-green-700">✅ Account created successfully! Choose your plan to continue.</p>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Pricing Cards -->
+        <div class="container mx-auto px-4 py-12">
+          <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             
-            ${message ? `<div class="message">⚠️ ${message}</div>` : ''}
-
-            <div class="pricing-grid">
-                <div class="plan">
-                    <div class="plan-name">Starter</div>
-                    <div class="savings">Save $45K+ annually</div>
-                    <div class="plan-price">$197<span>/month</span></div>
-                    <ul class="plan-features">
-                        <li>Up to 5,000 contacts</li>
-                        <li>Bidirectional Salesforce ↔ HubSpot sync</li>
-                        <li>Real-time updates</li>
-                        <li>Basic field mapping</li>
-                        <li>Email support</li>
-                        <li>Conflict resolution</li>
-                    </ul>
-                    <button class="cta-button" onclick="subscribe('starter')">Start Free Trial</button>
-                </div>
-
-                <div class="plan popular">
-                    <div class="plan-name">Professional</div>
-                    <div class="savings">Save $195K+ annually</div>
-                    <div class="plan-price">$397<span>/month</span></div>
-                    <ul class="plan-features">
-                        <li>Up to 25,000 contacts</li>
-                        <li>Advanced bidirectional sync</li>
-                        <li>Custom field mapping</li>
-                        <li>Real-time webhooks</li>
-                        <li>Priority support</li>
-                        <li>Advanced analytics</li>
-                        <li>Team collaboration</li>
-                        <li>Duplicate detection</li>
-                    </ul>
-                    <button class="cta-button" onclick="subscribe('professional')">Start Free Trial</button>
-                </div>
-
-                <div class="plan">
-                    <div class="plan-name">Enterprise</div>
-                    <div class="savings">Save $490K+ annually</div>
-                    <div class="plan-price">$797<span>/month</span></div>
-                    <ul class="plan-features">
-                        <li>Unlimited contacts</li>
-                        <li>White-label integration</li>
-                        <li>Multi-instance sync</li>
-                        <li>24/7 phone support</li>
-                        <li>Custom development</li>
-                        <li>Enterprise security (SOC2)</li>
-                        <li>SLA guarantees</li>
-                        <li>Dedicated account manager</li>
-                    </ul>
-                    <button class="cta-button" onclick="subscribe('enterprise')">Start Free Trial</button>
-                </div>
+            <!-- Starter Plan -->
+            <div class="bg-white rounded-lg shadow-lg card-hover p-8 border-2 border-gray-100">
+              <div class="text-center mb-8">
+                <h3 class="text-2xl font-bold text-gray-900 mb-4">Starter</h3>
+                <div class="text-4xl font-bold text-gray-900 mb-2">$97</div>
+                <div class="text-gray-600">per month</div>
+                <p class="text-sm text-gray-500 mt-2">Perfect for small teams</p>
+              </div>
+              
+              <ul class="space-y-4 mb-8">
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Up to 1,000 contacts
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Real-time sync
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Basic field mapping
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Email support
+                </li>
+              </ul>
+              
+              <button class="checkout-btn w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 transition" data-plan="starter">
+                Start with Starter
+              </button>
             </div>
+
+            <!-- Professional Plan -->
+            <div class="bg-white rounded-lg shadow-xl card-hover p-8 border-2 border-blue-500 relative">
+              <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                <span class="bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-semibold">Most Popular</span>
+              </div>
+              
+              <div class="text-center mb-8">
+                <h3 class="text-2xl font-bold text-gray-900 mb-4">Professional</h3>
+                <div class="text-4xl font-bold text-gray-900 mb-2">$197</div>
+                <div class="text-gray-600">per month</div>
+                <p class="text-sm text-gray-500 mt-2">For growing businesses</p>
+              </div>
+              
+              <ul class="space-y-4 mb-8">
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Up to 10,000 contacts
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Advanced field mapping
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Conflict resolution
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Priority support
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Sync analytics
+                </li>
+              </ul>
+              
+              <button class="checkout-btn w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 transition" data-plan="professional">
+                Start with Professional
+              </button>
+            </div>
+
+            <!-- Enterprise Plan -->
+            <div class="bg-white rounded-lg shadow-lg card-hover p-8 border-2 border-gray-100">
+              <div class="text-center mb-8">
+                <h3 class="text-2xl font-bold text-gray-900 mb-4">Enterprise</h3>
+                <div class="text-4xl font-bold text-gray-900 mb-2">$397</div>
+                <div class="text-gray-600">per month</div>
+                <p class="text-sm text-gray-500 mt-2">For large organizations</p>
+              </div>
+              
+              <ul class="space-y-4 mb-8">
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Unlimited contacts
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Custom field mapping
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Advanced automation
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  Dedicated support
+                </li>
+                <li class="flex items-center">
+                  <svg class="h-5 w-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                  API access
+                </li>
+              </ul>
+              
+              <button class="checkout-btn w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 transition" data-plan="enterprise">
+                Start with Enterprise
+              </button>
+            </div>
+          </div>
         </div>
 
-        <script>
-            async function subscribe(plan) {
-                // Get the button that was clicked
-                const button = event.target;
-                const originalText = button.textContent;
+        <!-- ROI Calculator -->
+        <div class="bg-white py-12">
+          <div class="container mx-auto px-4">
+            <div class="max-w-4xl mx-auto text-center">
+              <h2 class="text-3xl font-bold text-gray-900 mb-8">Calculate Your ROI</h2>
+              <div class="bg-gray-50 rounded-lg p-8">
+                <div class="grid md:grid-cols-2 gap-8">
+                  <div>
+                    <label for="hours" class="block text-sm font-medium text-gray-700 mb-2">
+                      Hours spent manually syncing per week:
+                    </label>
+                    <input type="range" id="hours" min="1" max="20" value="5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                    <div class="text-center mt-2">
+                      <span id="hoursValue" class="text-2xl font-bold text-blue-600">5</span> hours/week
+                    </div>
+                  </div>
+                  <div class="space-y-4">
+                    <div class="bg-white p-4 rounded-lg">
+                      <div class="text-sm text-gray-600">Current monthly waste:</div>
+                      <div id="monthlyWaste" class="text-2xl font-bold text-red-600">$1,000</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg">
+                      <div class="text-sm text-gray-600">Monthly savings with ConnectFlows:</div>
+                      <div id="monthlySavings" class="text-2xl font-bold text-green-600">$803</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg">
+                      <div class="text-sm text-gray-600">ROI:</div>
+                      <div id="roi" class="text-2xl font-bold text-blue-600">407%</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="bg-gray-800 text-white py-8">
+          <div class="container mx-auto px-4 text-center">
+            <p>&copy; 2024 ConnectFlows. All rights reserved.</p>
+            <p class="mt-2 text-gray-400">Questions? Contact us at hello@connectfloww.lemonsqueezy.com</p>
+          </div>
+        </footer>
+      </div>
+
+      <script>
+        // ROI Calculator
+        function calculateSavings() {
+          const hours = document.getElementById('hours').value;
+          const monthlyWaste = hours * 4 * 50; // weeks * hourly rate
+          const monthlySavings = monthlyWaste - 197;
+          const roi = Math.round((monthlySavings / 197) * 100);
+          
+          document.getElementById('hoursValue').textContent = hours;
+          document.getElementById('monthlyWaste').textContent = '$' + monthlyWaste.toLocaleString();
+          document.getElementById('monthlySavings').textContent = '$' + monthlySavings.toLocaleString();
+          document.getElementById('roi').textContent = roi + '%';
+        }
+        
+        // Initialize calculator
+        calculateSavings();
+        
+        // Update calculator when slider changes
+        document.getElementById('hours').addEventListener('input', calculateSavings);
+        
+        // Checkout button event listeners (CSP-compliant)
+        document.addEventListener('DOMContentLoaded', function() {
+          document.querySelectorAll('.checkout-btn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+              const plan = this.getAttribute('data-plan');
+              const originalText = this.textContent;
+              
+              // Update button state
+              this.textContent = 'Loading...';
+              this.disabled = true;
+              
+              try {
+                const res = await fetch('/create-checkout', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ plan })
+                });
                 
-                try {
-                    // Show loading state
-                    button.textContent = '🔄 Creating checkout...';
-                    button.disabled = true;
-                    
-                    const response = await fetch('/create-checkout', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            plan,
-                            signupData: ${signupComplete ? 'true' : 'false'}
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.checkoutUrl) {
-                        // Success - redirect to Lemon Squeezy
-                        button.textContent = '✅ Redirecting...';
-                        window.location.href = data.checkoutUrl;
-                    } else {
-                        // Show error message
-                        button.textContent = originalText;
-                        button.disabled = false;
-                        alert('Error creating checkout. Please try again.');
-                    }
-                } catch (error) {
-                    console.error('Checkout error:', error);
-                    button.textContent = originalText;
-                    button.disabled = false;
-                    alert('Network error. Please check your connection and try again.');
+                const data = await res.json();
+                
+                if (data.success && data.checkoutUrl) {
+                  window.location.href = data.checkoutUrl;
+                } else {
+                  alert('Error creating checkout. Please try again.');
+                  this.textContent = originalText;
+                  this.disabled = false;
                 }
-            }
-        </script>
+              } catch (err) {
+                console.error('Checkout error:', err);
+                alert('Network error. Please try again.');
+                this.textContent = originalText;
+                this.disabled = false;
+              }
+            });
+          });
+        });
+      </script>
     </body>
     </html>
   `);
 });
 
+console.log('➡️ Defining POST /create-checkout route.');
 // Create checkout session with Lemon Squeezy
 app.post('/create-checkout', async (req, res) => {
   try {
@@ -776,7 +701,15 @@ app.post('/create-checkout', async (req, res) => {
     // Get signup data from session if available
     const signupInfo = req.session.pendingSignup || {};
     
-    // Create checkout with Lemon Squeezy API
+    // Build success and error URLs
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? 'https://rapid-mailbox-production.up.railway.app'
+      : 'http://localhost:3000';
+    
+    const successUrl = `${baseUrl}/success?plan=${plan}`;
+    const errorUrl = `${baseUrl}/pricing?error=payment_failed`;
+    
+    // Create checkout with Lemon Squeezy API - FIXED FORMAT
     const checkoutResponse = await fetch('https://api.lemonsqueezy.com/v1/checkouts', {
       method: 'POST',
       headers: {
@@ -790,33 +723,35 @@ app.post('/create-checkout', async (req, res) => {
           attributes: {
             checkout_data: {
               email: signupInfo.email || 'customer@example.com',
-              name: String(signupInfo.email ? signupInfo.email.split('@')[0] : 'ConnectFlows Customer'),
-              custom: (() => {
-                const customFields = { plan: plan };
-                if (typeof signupInfo.email === 'string' && signupInfo.email.length > 0) {
-                  customFields.signup_email = signupInfo.email;
-                }
-                if (typeof signupInfo.password === 'string' && signupInfo.password.length > 0) {
-                  customFields.signup_password = signupInfo.password;
-                }
-                if (typeof signupInfo.createdAt === 'string' && signupInfo.createdAt.length > 0) {
-                  customFields.signup_created = signupInfo.createdAt;
-                }
-                return customFields;
-              })()
+              name: signupInfo.email ? signupInfo.email.split('@')[0] : 'ConnectFlows Customer',
+              billing_address: {},
+              custom: {
+                plan: plan,
+                signup_email: signupInfo.email || '',
+                signup_password: signupInfo.password || '',
+                signup_created: signupInfo.createdAt || new Date().toISOString()
+              }
+            },
+            expires_at: null,
+            test_mode: process.env.NODE_ENV !== 'production',
+            product_options: {
+              enabled: true,
+              redirect_url: successUrl,
+              receipt_button_text: "Go to Dashboard",
+              receipt_link_url: `${baseUrl}/dashboard`
             }
           },
           relationships: {
             store: {
               data: {
                 type: 'stores',
-                id: process.env.LEMON_SQUEEZY_STORE_ID
+                id: process.env.LEMON_SQUEEZY_STORE_ID // Ensure this is a string
               }
             },
             variant: {
               data: {
                 type: 'variants',
-                id: variantId
+                id: variantId // Ensure this is a string
               }
             }
           }
@@ -824,38 +759,148 @@ app.post('/create-checkout', async (req, res) => {
       })
     });
 
-    // LOGGING ADDED: Log the raw response status and text
-    console.log('Lemon Squeezy raw response status:', checkoutResponse.status);
-    const responseText = await checkoutResponse.text();
-    console.log('Lemon Squeezy raw response text:', responseText);
+    console.log('💰 Lemon Squeezy request body:', JSON.stringify({
+      data: {
+        type: 'checkouts',
+        attributes: {
+          checkout_data: {
+            email: signupInfo.email || 'customer@example.com',
+            name: signupInfo.email ? signupInfo.email.split('@')[0] : 'ConnectFlows Customer',
+            billing_address: {},
+            custom: {
+              plan: plan,
+              signup_email: signupInfo.email || '',
+              signup_password: signupInfo.password || '',
+              signup_created: signupInfo.createdAt || new Date().toISOString()
+            }
+          },
+          expires_at: null,
+          test_mode: process.env.NODE_ENV !== 'production',
+          product_options: {
+            enabled: true,
+            redirect_url: successUrl,
+            receipt_button_text: "Go to Dashboard",
+            receipt_link_url: `${baseUrl}/dashboard`
+          }
+        },
+        relationships: {
+          store: {
+            data: {
+              type: 'stores',
+              id: process.env.LEMON_SQUEEZY_STORE_ID
+            }
+          },
+          variant: {
+            data: {
+              type: 'variants',
+              id: variantId
+            }
+          }
+        }
+      }
+    }, null, 2));
+    console.log('💰 Lemon Squeezy checkout request sent');
+    console.log('📊 Response status:', checkoutResponse.status);
     
-    // Attempt to parse JSON after logging raw text
+    const responseText = await checkoutResponse.text();
+    console.log('📄 Raw response:', responseText);
+    
     let checkoutData;
     try {
       checkoutData = JSON.parse(responseText);
     } catch (parseError) {
-      console.error('Error parsing Lemon Squeezy response JSON:', parseError);
-      return res.status(500).json({ error: 'Failed to parse Lemon Squeezy response' });
+      console.error('❌ Failed to parse Lemon Squeezy response:', parseError);
+      return res.status(500).json({ 
+        error: 'Payment system error',
+        details: 'Failed to process checkout request'
+      });
     }
 
-    // LOGGING ADDED: Log the parsed JSON data
-    console.log('Lemon Squeezy parsed checkoutData:', JSON.stringify(checkoutData, null, 2));
-    
+    if (!checkoutResponse.ok) {
+      console.error('❌ Lemon Squeezy API error:', checkoutData);
+      return res.status(500).json({ 
+        error: 'Payment system error',
+        details: checkoutData.errors?.[0]?.detail || 'Failed to create checkout'
+      });
+    }
+
     if (checkoutData.data && checkoutData.data.attributes.url) {
-      console.log(`💰 Created checkout for plan: ${plan}, email: ${signupInfo.email || 'unknown'}`);
-      res.json({ checkoutUrl: checkoutData.data.attributes.url });
+      const checkoutUrl = checkoutData.data.attributes.url;
+      console.log(`✅ Checkout created successfully for plan: ${plan}`);
+      console.log(`🔗 Checkout URL: ${checkoutUrl}`);
+      
+      res.json({ 
+        success: true,
+        checkoutUrl: checkoutUrl,
+        message: 'Checkout created successfully'
+      });
     } else {
-      console.error('Lemon Squeezy API Error:', checkoutData);
-      res.status(500).json({ error: 'Failed to create checkout session' });
+      console.error('❌ Invalid checkout response:', checkoutData);
+      res.status(500).json({ 
+        error: 'Payment system error',
+        details: 'Invalid checkout response from payment provider'
+      });
     }
 
   } catch (error) {
-    console.error('Checkout creation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Checkout creation error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: 'Failed to create checkout session'
+    });
   }
 });
 
+console.log('➡️ Defining GET /create-checkout route.');
+// Add the GET /create-checkout route here, before the 404 handler
+app.get('/create-checkout', async (req, res) => {
+  try {
+    const plan = req.query.plan;
+    
+    const planVariants = {
+      starter: '839923',
+      professional: '845532', 
+      enterprise: '845546'
+    };
 
+    const variantId = planVariants[plan];
+    if (!variantId) {
+      return res.status(400).send('Invalid plan');
+    }
+
+    const checkoutResponse = await fetch('https://api.lemonsqueezy.com/v1/checkouts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.LEMON_SQUEEZY_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        data: {
+          type: 'checkouts',
+          attributes: {
+            checkout_data: { custom: { plan } }
+          },
+          relationships: {
+            store: { data: { type: 'stores', id: process.env.LEMON_SQUEEZY_STORE_ID } },
+            variant: { data: { type: 'variants', id: variantId } }
+          }
+        }
+      })
+    });
+    
+    const data = await checkoutResponse.json();
+    if (data.data?.attributes?.url) {
+      res.redirect(data.data.attributes.url);
+    } else {
+      res.status(500).send('Checkout failed');
+    }
+  } catch (error) {
+    console.error('Checkout error:', error);
+    res.status(500).send('Server error');
+  }
+});
+
+console.log('➡️ Defining /health route.');
 // Health check
 app.get('/health', (req, res) => {
   res.json({ 
@@ -864,6 +909,7 @@ app.get('/health', (req, res) => {
     uptime: process.uptime()
   });
 });
+console.log('➡️ Defining /signup route.');
 // Signup page
 app.get('/signup', (req, res) => {
   const message = req.query.message || '';
@@ -959,6 +1005,7 @@ app.get('/signup', (req, res) => {
   `);
 });
 
+console.log('➡️ Defining POST /signup route.');
 // Handle signup form submission - REDIRECT TO PRICING FIRST
 app.post('/signup', (req, res) => {
   const { email, password } = req.body;
@@ -979,6 +1026,7 @@ app.post('/signup', (req, res) => {
   res.redirect('/pricing?signup=complete');
 });
 
+console.log('➡️ Defining /dashboard route.');
 // Dashboard route - ONLY FOR PAID/TRIALING USERS
 app.get('/dashboard', requireAuth, (req, res) => {
   const user = req.session.user;
@@ -1178,18 +1226,21 @@ app.get('/dashboard', requireAuth, (req, res) => {
   `);
 });
 
+console.log('➡️ Defining /demo route.');
 // Demo page
 // Demo page  
 app.get('/demo', (req, res) => {
   res.sendFile(path.join(__dirname, 'demo.html'));
 });
 
+console.log('➡️ Defining /logout route.');
 // Logout route
 app.get('/logout', (req, res) => {
   req.session.destroy();
   res.redirect('/?message=You have been signed out');
 });
 
+console.log('➡️ Defining /upgrade route.');
 // Upgrade page
 app.get('/upgrade', (req, res) => {
   const message = req.query.message || 'Your trial has expired.';
@@ -1217,6 +1268,7 @@ app.get('/upgrade', (req, res) => {
 });
 // Auth routes
 // Salesforce OAuth initiation
+console.log('➡️ Defining /auth/salesforce route.');
 app.get('/auth/salesforce', (req, res) => {
   const { customer_id } = req.query;
   
@@ -1232,6 +1284,7 @@ app.get('/auth/salesforce', (req, res) => {
   res.redirect(authUrl);
 });
 
+console.log('➡️ Defining /auth/salesforce/callback route.');
 // Salesforce OAuth callback - COMPLETE WORKING VERSION
 app.get('/auth/salesforce/callback', async (req, res) => {
   const { code, error, state, error_description } = req.query;
@@ -1332,16 +1385,18 @@ app.get('/auth/salesforce/callback', async (req, res) => {
     });
   }
 });
+console.log('➡️ Defining first /auth/hubspot route (old).');
 app.get('/auth/hubspot', requireAuth, (req, res) => {
   const authUrl = `https://app.hubspot.com/oauth/authorize?` +
     `client_id=${process.env.HUBSPOT_CLIENT_ID}&` +
-`scope=crm.objects.contacts.read crm.objects.contacts.write crm.schemas.contacts.read crm.schemas.contacts.write oauth&` +
-    `redirect_uri=${encodeURIComponent('https://rapid-mailbox-production.up.railway.app/auth/hubspot/callback')}`;
+    `scope=crm.objects.contacts.read crm.objects.contacts.write crm.schemas.contacts.read crm.schemas.contacts.write oauth&` +
+    `redirect_uri=${encodeURIComponent('https://connectfloww.lemonsqueezy.com/auth/hubspot/callback')}`;
   
   console.log('🔄 Redirecting to HubSpot OAuth');
   res.redirect(authUrl);
 });
 
+console.log('➡️ Defining first /auth/hubspot/callback route (old).');
 // HubSpot OAuth callback
 app.get('/auth/hubspot/callback', requireAuth, async (req, res) => {
   const { code, error } = req.query;
@@ -1363,7 +1418,7 @@ app.get('/auth/hubspot/callback', requireAuth, async (req, res) => {
         grant_type: 'authorization_code',
         client_id: process.env.HUBSPOT_CLIENT_ID,
         client_secret: process.env.HUBSPOT_CLIENT_SECRET,
-        redirect_uri: 'https://getconnectflows.com/auth/hubspot/callback',
+        redirect_uri: 'https://connectfloww.lemonsqueezy.com/auth/hubspot/callback',
         code: code
       })
     });
@@ -1385,6 +1440,7 @@ app.get('/auth/hubspot/callback', requireAuth, async (req, res) => {
     res.redirect('/dashboard?error=HubSpot connection failed');
   }
 });
+console.log('➡️ Defining second /auth/hubspot route (correct).');
 app.get('/auth/hubspot',requireAuth,  (req, res) => {
   const { customer_id } = req.query;
   
@@ -1400,6 +1456,7 @@ app.get('/auth/hubspot',requireAuth,  (req, res) => {
   res.redirect(authUrl);
 });
 
+console.log('➡️ Defining second /auth/hubspot/callback route (correct).');
 // HubSpot OAuth callback - COMPLETE WORKING VERSION
 app.get('/auth/hubspot/callback', async (req, res) => {
   const { code, error, state, error_description } = req.query;
@@ -1451,9 +1508,9 @@ app.get('/auth/hubspot/callback', async (req, res) => {
       body: tokenRequestData  
     });
 
-      const tokenData = await tokenResponse.json();
+    const tokenData = await tokenResponse.json();
 
-      console.log('📥 HubSpot token response:', {
+    console.log('📥 HubSpot token response:', {
       success: tokenResponse.ok,
       status: tokenResponse.status,
       hasAccessToken: !!tokenData.access_token,
@@ -1502,6 +1559,7 @@ app.get('/auth/hubspot/callback', async (req, res) => {
   }
 });
 // API routes
+console.log('➡️ Defining /api/sync route.');
 app.get('/api/sync', (req, res) => {
   res.json({ 
     message: 'Sync endpoint ready!',
@@ -1514,6 +1572,7 @@ app.get('/api/sync', (req, res) => {
   });
 });
 
+console.log('➡️ Defining /api/status route.');
 app.get('/api/status', (req, res) => {
   res.json({ 
     message: 'Integration status',
@@ -1531,6 +1590,7 @@ app.get('/api/status', (req, res) => {
 });
 
 // 💰 MONEY-MAKING SYNC ENDPOINTS 💰
+console.log('➡️ Defining GET /api/sync/contacts route.');
 app.get('/api/sync/contacts', (req, res) => {
   res.json({
     message: "💰 Contact Sync API Ready! 🚀",
@@ -1542,6 +1602,7 @@ app.get('/api/sync/contacts', (req, res) => {
   });
 });
 
+console.log('➡️ Defining POST /api/sync/contacts route.');
 // REAL ENTERPRISE SYNC ENDPOINT FOR PAYING/TRIALING CUSTOMERS
 app.post('/api/sync/contacts', requireAuth, async (req, res) => {
   try {
@@ -1720,55 +1781,152 @@ async function updateUserSubscriptionStatus(userId, subscriptionStatus, planType
   }
 }
 
+console.log('➡️ Defining /webhooks/lemonsqueezy route.');
 // Lemon Squeezy webhook handler for payment confirmations
 app.post('/webhooks/lemonsqueezy', async (req, res) => {
   try {
-    const { data } = req.body;
-    
-    if (data && data.type === 'order_created') {
-      const order = data.attributes;
-      const customerEmail = order.customer_email;
-      const variantId = order.variant_id;
-      const customData = order.custom || {};
-      const status = order.status || 'trialing'; // Lemon Squeezy sends 'trialing', 'active', etc.
-      
-      console.log(`💰 Payment received: ${customerEmail} for variant ${variantId}`);
-      console.log('📋 Custom data:', customData);
-      
-      // Check if this is a new signup with payment
-      if (customData.signup_email && customData.signup_password) {
-        console.log('🆕 Creating new user account from payment');
-        
-        // Create the user account in database
-        const passwordHash = await bcrypt.hash(customData.signup_password, 10);
-        
-        const newUser = await createUser(customData.signup_email, passwordHash);
-        
-        // Update user to paid/trialing status
-        await updateUserSubscriptionStatus(newUser.id, status, customData.plan || 'starter');
-        
-        console.log(`✅ New paid/trialing user created: ${customData.signup_email}`);
-        
-      } else {
-        // Existing user payment
-        const user = await getUserByEmail(customerEmail);
-        if (user) {
-          // Update subscription status to paid/trialing
-          await updateUserSubscriptionStatus(user.id, status, customData.plan || 'starter');
-          console.log(`✅ User ${customerEmail} upgraded to paid/trialing plan`);
-        } else {
-          console.log(`⚠️ Payment received but user not found: ${customerEmail}`);
-        }
-      }
+    console.log('📥 Webhook received:', JSON.stringify(req.body, null, 2));
+
+    const { data, meta, event_name } = req.body;
+
+    if (!data || !event_name) {
+      console.log('⚠️ Invalid webhook payload');
+      return res.status(400).json({ error: 'Invalid webhook payload' });
     }
-    
-    res.status(200).json({ received: true });
+
+    console.log(`🔄 Processing webhook: ${event_name}`);
+
+    // Handle different webhook events
+    switch (event_name) {
+      case 'order_created':
+        await handleOrderCreated(data);
+        break;
+      case 'subscription_created':
+        await handleSubscriptionCreated(data);
+        break;
+      case 'subscription_updated':
+        await handleSubscriptionUpdated(data);
+        break;
+      case 'subscription_cancelled':
+        await handleSubscriptionCancelled(data);
+        break;
+      default:
+        console.log(`ℹ️ Unhandled webhook event: ${event_name}`);
+    }
+
+    res.status(200).json({ received: true, event: event_name });
+
   } catch (error) {
     console.error('❌ Webhook error:', error);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
 
+// Handle order created webhook
+async function handleOrderCreated(data) {
+  try {
+    const order = data.attributes;
+    const customerEmail = order.customer_email;
+    const variantId = order.variant_id;
+    const customData = order.custom || {};
+    const status = order.status || 'trialing';
+
+    console.log(`💰 Order created: ${customerEmail} for variant ${variantId}`);
+    console.log('📋 Custom data:', customData);
+
+    // Check if this is a new signup with payment
+    if (customData.signup_email && customData.signup_password) {
+      console.log('🆕 Creating new user account from payment');
+      
+      // Create the user account in database
+      const passwordHash = await bcrypt.hash(customData.signup_password, 10);
+      
+      const newUser = await createUser(customData.signup_email, passwordHash);
+      
+      // Update user to paid/trialing status
+      await updateUserSubscriptionStatus(newUser.id, status, customData.plan || 'starter');
+      
+      console.log(`✅ New paid/trialing user created: ${customData.signup_email}`);
+      
+    } else {
+      // Existing user payment
+      const user = await getUserByEmail(customerEmail);
+      if (user) {
+        // Update subscription status to paid/trialing
+        await updateUserSubscriptionStatus(user.id, status, customData.plan || 'starter');
+        console.log(`✅ User ${customerEmail} upgraded to paid/trialing plan`);
+      } else {
+        console.log(`⚠️ Payment received but user not found: ${customerEmail}`);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error handling order created:', error);
+    throw error;
+  }
+}
+
+// Handle subscription created webhook
+async function handleSubscriptionCreated(data) {
+  try {
+    const subscription = data.attributes;
+    const customerEmail = subscription.customer_email;
+    const status = subscription.status || 'active';
+    const customData = subscription.custom || {};
+
+    console.log(`🆕 Subscription created: ${customerEmail} with status ${status}`);
+
+    const user = await getUserByEmail(customerEmail);
+    if (user) {
+      await updateUserSubscriptionStatus(user.id, status, customData.plan || 'starter');
+      console.log(`✅ User ${customerEmail} subscription activated`);
+    }
+  } catch (error) {
+    console.error('❌ Error handling subscription created:', error);
+    throw error;
+  }
+}
+
+// Handle subscription updated webhook
+async function handleSubscriptionUpdated(data) {
+  try {
+    const subscription = data.attributes;
+    const customerEmail = subscription.customer_email;
+    const status = subscription.status;
+    const customData = subscription.custom || {};
+
+    console.log(`🔄 Subscription updated: ${customerEmail} to status ${status}`);
+
+    const user = await getUserByEmail(customerEmail);
+    if (user) {
+      await updateUserSubscriptionStatus(user.id, status, customData.plan || 'starter');
+      console.log(`✅ User ${customerEmail} subscription updated to ${status}`);
+    }
+  } catch (error) {
+    console.error('❌ Error handling subscription updated:', error);
+    throw error;
+  }
+}
+
+// Handle subscription cancelled webhook
+async function handleSubscriptionCancelled(data) {
+  try {
+    const subscription = data.attributes;
+    const customerEmail = subscription.customer_email;
+
+    console.log(`❌ Subscription cancelled: ${customerEmail}`);
+
+    const user = await getUserByEmail(customerEmail);
+    if (user) {
+      await updateUserSubscriptionStatus(user.id, 'cancelled');
+      console.log(`✅ User ${customerEmail} subscription cancelled`);
+    }
+  } catch (error) {
+    console.error('❌ Error handling subscription cancelled:', error);
+    throw error;
+  }
+}
+
+console.log('➡️ Defining /success route.');
 // Success page after payment
 app.get('/success', (req, res) => {
   res.send(`
@@ -1828,6 +1986,7 @@ app.get('/success', (req, res) => {
   `);
 });
 
+console.log('➡️ Defining error handling middleware.');
 // Error handling
 app.use((err, req, res, next) => {
   console.error('Error:', err.stack);
@@ -1837,6 +1996,7 @@ app.use((err, req, res, next) => {
   });
 });
 
+console.log('➡️ Defining 404 handler.');
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ 
@@ -1852,6 +2012,7 @@ app.use('*', (req, res) => {
 });
 
 // Start server
+console.log('🚀 ConnectFlows Express App - Server Start Call');
 app.listen(PORT, () => {
   console.log('🚀 SF-HubSpot Sync Server Starting...');
   console.log(`📱 Environment: ${process.env.NODE_ENV || 'development'}`);
