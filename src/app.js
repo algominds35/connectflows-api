@@ -817,7 +817,22 @@ app.post('/create-checkout', async (req, res) => {
       })
     });
 
-    const checkoutData = await checkoutResponse.json();
+    // LOGGING ADDED: Log the raw response status and text
+    console.log('Lemon Squeezy raw response status:', checkoutResponse.status);
+    const responseText = await checkoutResponse.text();
+    console.log('Lemon Squeezy raw response text:', responseText);
+    
+    // Attempt to parse JSON after logging raw text
+    let checkoutData;
+    try {
+      checkoutData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Error parsing Lemon Squeezy response JSON:', parseError);
+      return res.status(500).json({ error: 'Failed to parse Lemon Squeezy response' });
+    }
+
+    // LOGGING ADDED: Log the parsed JSON data
+    console.log('Lemon Squeezy parsed checkoutData:', JSON.stringify(checkoutData, null, 2));
     
     if (checkoutData.data && checkoutData.data.attributes.url) {
       console.log(`💰 Created checkout for plan: ${plan}, email: ${signupInfo.email || 'unknown'}`);
