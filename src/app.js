@@ -791,12 +791,19 @@ app.post('/create-checkout', async (req, res) => {
             checkout_data: {
               email: signupInfo.email || 'customer@example.com',
               name: String(signupInfo.email ? signupInfo.email.split('@')[0] : 'ConnectFlows Customer'),
-              custom: {
-                plan: plan,
-                ...(signupInfo.email ? { signup_email: signupInfo.email } : {}),
-                ...(signupInfo.password ? { signup_password: signupInfo.password } : {}),
-                ...(signupInfo.createdAt ? { signup_created: signupInfo.createdAt } : {})
-              }
+              custom: (() => {
+                const customFields = { plan: plan };
+                if (typeof signupInfo.email === 'string' && signupInfo.email.length > 0) {
+                  customFields.signup_email = signupInfo.email;
+                }
+                if (typeof signupInfo.password === 'string' && signupInfo.password.length > 0) {
+                  customFields.signup_password = signupInfo.password;
+                }
+                if (typeof signupInfo.createdAt === 'string' && signupInfo.createdAt.length > 0) {
+                  customFields.signup_created = signupInfo.createdAt;
+                }
+                return customFields;
+              })()
             }
           },
           relationships: {
