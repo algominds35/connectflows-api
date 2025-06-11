@@ -703,7 +703,7 @@ app.post('/create-checkout', async (req, res) => {
     
     // Build success and error URLs
     const baseUrl = process.env.NODE_ENV === 'production' 
-      ? 'https://rapid-mailbox-production.up.railway.app'
+      ? (process.env.CUSTOM_DOMAIN || 'https://rapid-mailbox-production.up.railway.app')
       : 'http://localhost:3000';
     
     const successUrl = `${baseUrl}/success?plan=${plan}`;
@@ -1390,7 +1390,7 @@ app.get('/auth/hubspot', requireAuth, (req, res) => {
   const authUrl = `https://app.hubspot.com/oauth/authorize?` +
     `client_id=${process.env.HUBSPOT_CLIENT_ID}&` +
     `scope=crm.objects.contacts.read crm.objects.contacts.write crm.schemas.contacts.read crm.schemas.contacts.write oauth&` +
-    `redirect_uri=${encodeURIComponent('https://connectfloww.lemonsqueezy.com/auth/hubspot/callback')}`;
+    `redirect_uri=${encodeURIComponent(process.env.HUBSPOT_REDIRECT_URI || 'https://rapid-mailbox-production.up.railway.app/auth/hubspot/callback')}`;
   
   console.log('🔄 Redirecting to HubSpot OAuth');
   res.redirect(authUrl);
@@ -1418,7 +1418,7 @@ app.get('/auth/hubspot/callback', requireAuth, async (req, res) => {
         grant_type: 'authorization_code',
         client_id: process.env.HUBSPOT_CLIENT_ID,
         client_secret: process.env.HUBSPOT_CLIENT_SECRET,
-        redirect_uri: 'https://connectfloww.lemonsqueezy.com/auth/hubspot/callback',
+        redirect_uri: process.env.HUBSPOT_REDIRECT_URI || 'https://rapid-mailbox-production.up.railway.app/auth/hubspot/callback',
         code: code
       })
     });
