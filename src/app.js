@@ -790,12 +790,12 @@ app.post('/create-checkout', async (req, res) => {
           attributes: {
             checkout_data: {
               email: signupInfo.email || 'customer@example.com',
-              name: signupInfo.email ? signupInfo.email.split('@')[0] : 'ConnectFlows Customer',
+              name: String(signupInfo.email ? signupInfo.email.split('@')[0] : 'ConnectFlows Customer'),
               custom: {
                 plan: plan,
-                ...(signupInfo.email && { signup_email: signupInfo.email }),
-                ...(signupInfo.password && { signup_password: signupInfo.password }),
-                ...(signupInfo.createdAt && { signup_created: signupInfo.createdAt })
+                ...(signupInfo.email ? { signup_email: signupInfo.email } : {}),
+                ...(signupInfo.password ? { signup_password: signupInfo.password } : {}),
+                ...(signupInfo.createdAt ? { signup_created: signupInfo.createdAt } : {})
               }
             }
           },
