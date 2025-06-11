@@ -1,0 +1,83 @@
+<script>
+    // ROI Calculator
+    function calculateSavings() {
+        const hours = document.getElementById('hours').value;
+        const monthlyWaste = hours * 4 * 50; // weeks * hourly rate
+        const monthlySavings = monthlyWaste - 197;
+        const roi = Math.round((monthlySavings / 197) * 100);
+        
+        document.getElementById('hoursValue').textContent = hours;
+        document.getElementById('monthlyWaste').textContent = '$' + monthlyWaste.toLocaleString();
+        document.getElementById('monthlySavings').textContent = '$' + monthlySavings.toLocaleString();
+        document.getElementById('roi').textContent = roi + '%';
+    }
+    
+    // Initialize calculator
+    calculateSavings();
+    
+    // Smooth scrolling
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            document.querySelector(this.getAttribute('href')).scrollIntoView({
+                behavior: 'smooth'
+            });
+        });
+    });
+    
+    // Counter animation
+    function animateCounters() {
+        const counters = document.querySelectorAll('.counter');
+        counters.forEach(counter => {
+            const target = parseInt(counter.textContent);
+            const increment = target / 100;
+            let current = 0; // Initialize 'current'
+            const interval = setInterval(() => {
+                if (current < target) {
+                    current += increment;
+                    counter.textContent = Math.round(current) + (counter.textContent.includes('+') ? '+' : '');
+                } else {
+                    counter.textContent = target + (counter.textContent.includes('+') ? '+' : '');
+                    clearInterval(interval);
+                }
+            }, 20); // Adjust speed if needed
+        });
+    }
+    // Initialize counter animation
+    animateCounters();
+</script>
+
+<!-- New script for pricing buttons -->
+<script>
+document.querySelectorAll('.start-trial-btn').forEach(btn => {
+  btn.addEventListener('click', async function() {
+    const plan = this.getAttribute('data-plan');
+    const originalText = this.textContent;
+    this.textContent = 'Loading...';
+    this.disabled = true;
+    try {
+      const res = await fetch('/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan })
+      });
+      const data = await res.json();
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        alert('Error creating checkout. Please try again.');
+        this.textContent = originalText;
+        this.disabled = false;
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      alert('Network error. Please try again.');
+      this.textContent = originalText;
+      this.disabled = false;
+    }
+  });
+});
+</script>
+<!-- Dummy comment to trigger Vercel deploy -->
+</body>
+</html> 
